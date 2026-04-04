@@ -88,10 +88,10 @@ export default {
 		app.action("repeat", async ({payload, context})=>{
 			try {
 
-				console.log("payload "+JSON.stringify(payload));
+				//console.log("payload "+JSON.stringify(payload));
 
 				const actions = payload.actions;
-				const checked: boolean = actions.selected_options.length > 0;
+				const checked: boolean = actions[0].selected_options.length > 0;
 				
 				await Utils.updateModal(payload, getNewMeetingBlocks(checked), env.SLACK_BOT_TOKEN);				
 			} catch (error) {

@@ -93,14 +93,7 @@ export default {
 			try {
 				console.log("payload: "+JSON.stringify(payload)+" | context: "+JSON.stringify(context));
 
-				const newBlocks = [{
-									"type": "section",
-									"text": {
-										"type": "plain_text",
-										"text": "your view has been updated!",
-										"emoji": true
-									}}];
-				await Utils.updateModal(payload, newBlocks, env.SLACK_BOT_TOKEN);
+				await Utils.updateModal(payload, getNewMeetingBlocks(true), env.SLACK_BOT_TOKEN);
 			} catch (error) {
 				console.log(error);
 			}

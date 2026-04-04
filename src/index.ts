@@ -25,7 +25,6 @@ export default {
 		});
 
 		app.command("/view",async ({context, body, client})=>{
-			await ack();
     // Call views.open with the built-in client
     const result = await client.views.open({
       // Pass a valid trigger_id within 3 seconds of receiving it

@@ -93,10 +93,37 @@ export default {
 			} catch (error) {
 				console.log(error);
 			}
-		}, async(req)=>{
+		}, async({payload})=>{
 			//lazy worker
 			try {
 				console.log("LAZY WORKER new_meeting submission req "+JSON.stringify(req));
+
+				const view = payload.view;
+				const blocks = view.blocks;
+				const state = view.state;
+
+				let name: String = '';
+				let time: number = -1;
+				let repeat = null;
+
+				for(const block of blocks){
+					const block_id = block.block_id;
+					const element = block.element;
+					const action_id = element.action_id;
+
+					switch(action_id){
+						case 'name':
+							name = state[block_id].name.value;
+							break;
+						case 'time':
+							time = state[block_id].time.value;
+							break;
+						case 'repeat':
+							repeat = state[block_id].repeat.selected_options.length > 0;
+							break;
+					}
+				}
+				console.log(`name: ${name}, time: ${time}, repeat: ${repeat}`);
 			} catch (error) {
 				console.log(error);
 			}

@@ -41,9 +41,11 @@ export default {
 		  }
 		});
 
-		app.action("test_action_id", async ({action, view, ack})=>{
+		app.action("test_action_id", async ({payload})=>{
 			try {
-				console.log("whats action? "+JSON.stringify(action) + " | whats view? "+JSON.stringify(view)+ " | whats ack? "+JSON.stringify(ack));
+				console.log("whats action? "+JSON.stringify(payload));
+				const textValue = payload.actions[0].value;
+				console.log("input value: "+textValue);
 			} catch(error){
 				console.log(error);
 			}

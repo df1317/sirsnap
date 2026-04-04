@@ -94,19 +94,12 @@ export default {
 
 				const client = context.client;
 
-				client.views.update({
-					view_id: payload.view.view_id,
-					view:{
-						type:"modal",
-						title:{
-							text:"a very hard to update view!",
-							type:"plain_text"
-						},
-						blocks:[]
-					}
+				client.views.open({
+					trigger_id: payload.trigger_id,
+					view:{"type":"modal","submit":{"type":"plain_text","text":"Submit","emoji":true},"close":{"type":"plain_text","text":"Cancel","emoji":true},"title":{"type":"plain_text","text":"test view","emoji":true},"blocks":[{"dispatch_action":true,"type":"input","element":{"type":"plain_text_input","action_id":"test_action_id"},"label":{"type":"plain_text","text":"Label","emoji":true},"optional":false}]}
 				});
 
-				return {"response_action":"update","view":{"type":"modal","title":{"type":"plain_text","text":"Updated view"},"blocks":[{"type":"section","text":{"type":"plain_text","text":"I've changed and I'll never be the same. You must believe me."}}]}};
+				// return {"response_action":"update","view":{"type":"modal","title":{"type":"plain_text","text":"Updated view"},"blocks":[{"type":"section","text":{"type":"plain_text","text":"I've changed and I'll never be the same. You must believe me."}}]}};
 			} catch (error) {
 				console.log(error);
 			}

@@ -1,4 +1,5 @@
 import { SlackApp, SlackEdgeAppEnv } from 'slack-cloudflare-workers';
+import * as Utils from './Utils.ts';
 
 function getNewMeetingBlocks(withRepeat: boolean){
 	if(!withRepeat){
@@ -90,35 +91,16 @@ export default {
 
 		app.action("repeat", async ({payload, context})=>{
 			try {
-				console.log("payload: "+JSON.stringify(payload)+" | context: "+JSON.stringify(context)+" | slack bot token: "+env.SLACK_BOT_TOKEN);
+				console.log("payload: "+JSON.stringify(payload)+" | context: "+JSON.stringify(context));
 
-				await fetch("https://slack.com/api/views.update",{
-					method:"POST",
-					headers:{
-						"Content-type":"application/json",
-						"Authorization":`Bearer ${env.SLACK_BOT_TOKEN}`
-					},
-					body: JSON.stringify({
-						view_id: payload.view.id,
-						hash: payload.view.hash,
-						view:{
-							type:"modal",
-							callback_id: payload.view.callback_id,
-							title:{type:"plain_text",text:"pls just updtae!"},
-							submit:{type:"plain_text",text:"Confirm"},
-							blocks:[
-								{
+				const newBlocks = [{
 									"type": "section",
 									"text": {
 										"type": "plain_text",
 										"text": "your view has been updated!",
 										"emoji": true
-									}
-								}
-							]
-						}
-					})
-				});		
+									}}];
+				await Utils.updateModal(payload, newBlocks, env.SLACK_BOT_TOKEN);
 			} catch (error) {
 				console.log(error);
 			}

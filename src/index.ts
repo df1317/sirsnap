@@ -16,6 +16,14 @@ export default {
 				await respond({ text: 'This is an async reply. How are you doing?' });
 			},
 		);
+
+		app.command("/test", async (req: Request)=>{
+			console.log("test got called! /test has ran and been run!");
+			return "/test ran in a cloudflare worker";
+		}, async ({context: {response}})=>{
+			console.log("/est 'lazy' listner got ran!");
+		});
+
 		return await app.run(request, ctx);
 	},
 };

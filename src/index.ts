@@ -60,8 +60,8 @@ export default {
 			try {
 				const res = await context.client.views.open({
 					trigger_id: payload.trigger_id,
-					callback_id: "new_meeting",
 					view: {
+						callback_id: "new_meeting",
 						"type": "modal",
 						"submit": {
 							"type": "plain_text",

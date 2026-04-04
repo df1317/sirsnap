@@ -24,9 +24,8 @@ export default {
 			console.log("/est 'lazy' listner got ran!");
 		});
 
-		app.command("/view",async ({ack, body, client, logger})=>{
+		app.command("/view",async ({context, body, client})=>{
 			await ack();
-			 try {
     // Call views.open with the built-in client
     const result = await client.views.open({
       // Pass a valid trigger_id within 3 seconds of receiving it
@@ -76,11 +75,7 @@ export default {
         }
       }
     });
-    logger.info(result);
-  }
-  catch (error) {
-    logger.error(error);
-  }
+    
 		});
 
 		return await app.run(request, ctx);

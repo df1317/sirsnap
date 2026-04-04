@@ -34,53 +34,83 @@ export default {
 		    const result = await client.views.open({
 		      trigger_id: payload.trigger_id,
 		      view: {
-				type: "modal",
-				title:{
-					type: "plain_text",
-					text: "Modal Title"
-				},
-				blocks: [
-					{"type":"input","element":{"type":"radio_buttons","options":[{"text":{"type":"plain_text","text":"first radial button","emoji":true},"value":"value-0"},{"text":{"type":"plain_text","text":"cooll button 2","emoji":true},"value":"value-1"},{"text":{"type":"plain_text","text":"extra option 3","emoji":true},"value":"value-2"}],"action_id":"radio_buttons-action"},"label":{"type":"plain_text","text":"Label","emoji":true},"optional":false},
-					{type:"divider"},
+	"type": "modal",
+	"title": {
+		"type": "plain_text",
+		"text": "My App",
+		"emoji": true
+	},
+	"submit": {
+		"type": "plain_text",
+		"text": "Submit",
+		"emoji": true
+	},
+	"close": {
+		"type": "plain_text",
+		"text": "Cancel",
+		"emoji": true
+	},
+	"blocks": [
+		{
+			"type": "input",
+			"element": {
+				"type": "radio_buttons",
+				"options": [
 					{
-						dispatch_action:true,
-						type: "input",
-						element:{
-							type: "plain_text_input",
-							action_id: "action1",
+						"text": {
+							"type": "plain_text",
+							"text": "first radial button",
+							"emoji": true
 						},
-						label:{
-							type:"plain_text",
-							text:"input label :slack:",
-							emoji:true,
-						}
+						"value": "value-0"
 					},
-					{type:"divider"},
 					{
-						type:"context_actions",
-						elements:[
-							{
-								"type": "feedback_buttons",
-								"action_id": "feedback",
-								"positive_button": {
-									"text": {
-										"type": "plain_text",
-										"text": "Good Response"
-									},
-									"value": "positive"
-								},
-								"negative_button": {
-									"text": {
-										"type": "plain_text",
-										"text": "Bad Response"
-									},
-									"value": "negative"
-								}
-							}
-						]
+						"text": {
+							"type": "plain_text",
+							"text": "cooll button 2",
+							"emoji": true
+						},
+						"value": "value-1"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "extra option 3",
+							"emoji": true
+						},
+						"value": "value-2"
 					}
 				],
-			  },
+				"action_id": "radio_buttons-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "Label",
+				"emoji": true
+			},
+			"optional": false
+		},
+		{
+			"type": "divider"
+		},
+		{
+			"dispatch_action": true,
+			"type": "input",
+			"element": {
+				"type": "plain_text_input",
+				"action_id": "action1"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "input label :slack:",
+				"emoji": true
+			}
+		},
+		{
+			"type": "divider"
+		}
+	]
+}
 		    });
 		    console.log(result);
 		  } catch (error) {

@@ -3,9 +3,9 @@ import * as Utils from './Utils.ts';
 
 function getNewMeetingBlocks(withRepeat: boolean){
 	if(!withRepeat){
-		return '[{"type":"input","element":{"type":"plain_text_input","action_id":"name"},"label":{"type":"plain_text","text":"Name","emoji":true},"optional":false},{"type":"input","element":{"type":"datetimepicker","action_id":"time"},"label":{"type":"plain_text","text":"Time","emoji":true},"optional":false},{"type":"actions","elements":[{"type":"checkboxes","options":[{"text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true},"value":"value-2"}],"action_id":"repeat"}]}]';
+		return `[{"type":"input","element":{"type":"plain_text_input","action_id":"name"},"label":{"type":"plain_text","text":"Name","emoji":true},"optional":false},{"type":"input","element":{"type":"datetimepicker","action_id":"time"},"label":{"type":"plain_text","text":"Time","emoji":true},"optional":false},{"type":"actions","elements":[{"type":"checkboxes","options":[{"text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true},"value":"value-2"}],"action_id":"repeat"}]}]`;
 	}
-	return '[{"type":"input","element":{"type":"plain_text_input","action_id":"name"},"label":{"type":"plain_text","text":"Name","emoji":true},"optional":false},{"type":"input","element":{"type":"datetimepicker","action_id":"time"},"label":{"type":"plain_text","text":"Time","emoji":true},"optional":false},{"type":"actions","elements":[{"type":"checkboxes","initial_options":[{"value":"value-2","text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true}}],"options":[{"text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true},"value":"value-2"}],"action_id":"repeat"}]},{"type":"input","element":{"type":"datepicker","initial_date":"1990-04-28","placeholder":{"type":"plain_text","text":"Select a date","emoji":true},"action_id":"untilwhen"},"label":{"type":"plain_text","text":"Until when?","emoji":true},"optional":false}]';
+	return `[{"type":"input","element":{"type":"plain_text_input","action_id":"name"},"label":{"type":"plain_text","text":"Name","emoji":true},"optional":false},{"type":"input","element":{"type":"datetimepicker","action_id":"time"},"label":{"type":"plain_text","text":"Time","emoji":true},"optional":false},{"type":"actions","elements":[{"type":"checkboxes","initial_options":[{"value":"value-2","text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true}}],"options":[{"text":{"type":"plain_text","text":":repeat: Repeat - once a week until given date","emoji":true},"value":"value-2"}],"action_id":"repeat"}]},{"type":"input","element":{"type":"datepicker","initial_date":"${Utils.getYYYYMMDD()}","placeholder":{"type":"plain_text","text":"Select a date","emoji":true},"action_id":"untilwhen"},"label":{"type":"plain_text","text":"Until when?","emoji":true},"optional":false}]`;
 }
 
 export default {
@@ -132,7 +132,7 @@ export default {
 							break;
 					}
 				}
-				console.log(`name: ${name}, time: ${time}, repeat: ${repeat}`);
+				console.log(`name: ${name}, time: ${time}, repeat: ${repeat}, untilwhen: ${untilwhen}`);
 			} catch (error) {
 				console.log(error);
 			}

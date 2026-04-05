@@ -35,3 +35,14 @@ export function updateModal(payload, blocks, token, title?, submit?, view?){
         body: JSON.stringify(body)
     });
 }
+
+export function getYYYYMMDD(sep? : string){
+    if(!sep){
+        sep = '-';
+    }
+    var today = new Date();
+    var dd = String(today.getDate()).padStart(2, '0');
+    var mm = String(today.getMonth() + 1).padStart(2, '0'); //January is 0!
+    var yyyy = today.getFullYear();
+    return `${yyyy}${sep}${mm}${sep}${dd}`;
+}

@@ -7,15 +7,13 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 
-	"d1_databases":[
+	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name":"sirsnap-prod",
-			"database_id":"5268db1c-5d12-49fc-b744-46e496003213"
+			"database_name": "sirsnap-prod",
+			"database_id": "5268db1c-5d12-49fc-b744-46e496003213"
 		}
 	],
 	/**

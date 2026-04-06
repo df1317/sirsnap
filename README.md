@@ -4,7 +4,7 @@ A Slack bot built with [slack-edge](https://github.com/yusukebe/slack-edge) runn
 
 ## Features
 
-- **Slash Commands**: 
+- **Slash Commands**:
   - `/hello` - Get a friendly greeting with quick check-in/out buttons
   - `/attendance [in|out|status|help]` - Full attendance tracking system
 - **Button Interactions**: Quick check-in/out buttons for easy attendance tracking
@@ -21,6 +21,7 @@ A Slack bot built with [slack-edge](https://github.com/yusukebe/slack-edge) runn
 You can either:
 
 **Option A: Use the App Manifest (Recommended)**
+
 1. Go to [Slack API](https://api.slack.com/apps) and click "Create New App"
 2. Choose "From an app manifest"
 3. Select your workspace
@@ -29,6 +30,7 @@ You can either:
 6. Create the app
 
 **Option B: Manual Setup**
+
 1. Go to [Slack API](https://api.slack.com/apps) and create a new app
 2. Under "OAuth & Permissions", add these bot token scopes:
    - `app_mentions:read`
@@ -62,35 +64,43 @@ bun wrangler secret put SLACK_BOT_TOKEN
 ### 3. Set up Slack App Configuration
 
 #### Slash Commands
+
 Add slash commands in your Slack app:
+
 - Command: `/hello`
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
 - Description: "Get a friendly greeting"
 
-- Command: `/attendance`  
+- Command: `/attendance`
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
 - Description: "Track your attendance - check in, check out, view status"
 - Usage hint: `[in|out|status|help]`
 
 #### Event Subscriptions
+
 Enable event subscriptions:
+
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
 - Subscribe to bot events:
   - `app_mention`
   - `message.im`
 
 #### Interactive Components
+
 Enable interactive components:
+
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
 
 ## Development
 
 Install dependencies:
+
 ```bash
 bun install
 ```
 
 Start local development server:
+
 ```bash
 bun dev
 ```
@@ -98,6 +108,7 @@ bun dev
 ## Deployment
 
 Deploy to Cloudflare Workers:
+
 ```bash
 bun deploy
 ```
@@ -106,7 +117,7 @@ bun deploy
 
 ```
 ├── src/
-│   ├── index.ts          # Main worker code with Slack bot logic  
+│   ├── index.ts          # Main worker code with Slack bot logic
 │   └── features/         # Modular feature implementations
 │       ├── index.ts      # Feature exports
 │       ├── hello.ts      # Hello command feature
@@ -123,7 +134,7 @@ bun deploy
 2. Try the `/hello` command in any channel for a quick greeting
 3. Use `/attendance` commands for attendance tracking:
    - `/attendance in` - Check in to the workspace
-   - `/attendance out` - Check out of the workspace  
+   - `/attendance out` - Check out of the workspace
    - `/attendance status` - View your current attendance status
    - `/attendance help` - Get help with attendance commands
 4. Click the interactive buttons for quick check-in/out

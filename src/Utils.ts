@@ -1,6 +1,6 @@
 /**
  *  Dont forget to await the response!
- * @param payload a paylaod from a app.action()  
+ * @param payload a paylaod from a app.action()
  * @param blocks the blocks that should be updated
  * @param token the SLACK_BOT_TOKEN
  * @param title a optional argument to change the `title`
@@ -8,41 +8,41 @@
  * @param view a argument that gives you the option to completly override thr view
  * @returns a promise the resolves to a `Response` object. Directly from a fetch
  */
-export function updateModal(payload, blocks, token, title?, submit?, view?){
-    let body = {
-        view_id: payload.view.id,
-        hash: payload.view.hash,
-        view: {},
-    };    
-    if(view){
-        body.view = view;
-        body.view.callback_id = payload.view.callback_id;
-    } else {
-        body.view = {
-            type: "modal",
-            callback_id: payload.view.callback_id,
-            title: title ? title : payload.view.title,
-            submit: submit ? submit : payload.view.submit,
-            blocks: blocks
-        };
-    }
-    return fetch("https://slack.com/api/views.update",{
-        method: "POST",
-        headers: {
-            "Content-type":"application/json",
-            "Authorization":`Bearer ${token}`
-        },
-        body: JSON.stringify(body)
-    });
+export function updateModal(payload, blocks, token, title?, submit?, view?) {
+	let body = {
+		view_id: payload.view.id,
+		hash: payload.view.hash,
+		view: {},
+	};
+	if (view) {
+		body.view = view;
+		body.view.callback_id = payload.view.callback_id;
+	} else {
+		body.view = {
+			type: "modal",
+			callback_id: payload.view.callback_id,
+			title: title ? title : payload.view.title,
+			submit: submit ? submit : payload.view.submit,
+			blocks: blocks,
+		};
+	}
+	return fetch("https://slack.com/api/views.update", {
+		method: "POST",
+		headers: {
+			"Content-type": "application/json",
+			Authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify(body),
+	});
 }
 
-export function getYYYYMMDD(sep? : string){
-    if(!sep){
-        sep = '-';
-    }
-    var today = new Date();
-    var dd = String(today.getDate()).padStart(2, '0');
-    var mm = String(today.getMonth() + 1).padStart(2, '0'); //January is 0!
-    var yyyy = today.getFullYear();
-    return `${yyyy}${sep}${mm}${sep}${dd}`;
+export function getYYYYMMDD(sep?: string) {
+	if (!sep) {
+		sep = "-";
+	}
+	var today = new Date();
+	var dd = String(today.getDate()).padStart(2, "0");
+	var mm = String(today.getMonth() + 1).padStart(2, "0"); //January is 0!
+	var yyyy = today.getFullYear();
+	return `${yyyy}${sep}${mm}${sep}${dd}`;
 }

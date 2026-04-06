@@ -1,7 +1,7 @@
 display_information:
   name: Sirsnap
   description: fill out your attendance!
-  background_color: "#7e00de"
+  background_color: '#7e00de'
 
 features:
   bot_user:
@@ -16,8 +16,8 @@ features:
       description: Track your attendance - check in, check out, view status
       should_escape: false
       url: https://sirsnap.bore.dunkirk.sh/slack
-      usage_hint: "[in|out|status|help]"
-  
+      usage_hint: '[in|out|status|help]'
+
 oauth_config:
   scopes:
     bot:

@@ -5,6 +5,14 @@ import { generateDates } from '../lib/recurrence';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+async function postWithJoin(client: any, channelId: string, message: any): Promise<any> {
+  return client.chat.postMessage(message).catch(async (err: any) => {
+    if (err?.error !== 'not_in_channel') throw err;
+    await client.conversations.join({ channel: channelId });
+    return client.chat.postMessage(message);
+  });
+}
+
 function flattenState(stateValues: Record<string, Record<string, any>>): Record<string, any> {
   const flat: Record<string, any> = {};
   for (const blockState of Object.values(stateValues)) {
@@ -15,7 +23,56 @@ function flattenState(stateValues: Record<string, Record<string, any>>): Record<
   return flat;
 }
 
-function buildNewMeetingModal(isRecurring: boolean): any {
+function buildListModal(
+  upcoming: { id: number; name: string; scheduled_at: number }[],
+  cancelled: { id: number; name: string; scheduled_at: number }[],
+  adminUser: boolean,
+): any {
+  const blocks: any[] = [];
+
+  const addRow = (m: { id: number; name: string; scheduled_at: number }, isCancelled: boolean) => {
+    const block: any = {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${isCancelled ? '~' : ''}*${m.name}*${isCancelled ? '~' : ''}\n<!date^${m.scheduled_at}^{date_long_pretty} at {time}|${new Date(m.scheduled_at * 1000).toISOString()}>`,
+      },
+    };
+    if (adminUser) {
+      block.accessory = {
+        type: 'button',
+        text: { type: 'plain_text', text: 'Edit' },
+        action_id: 'meeting_open_edit',
+        value: String(m.id),
+      };
+    }
+    blocks.push(block);
+  };
+
+  if (upcoming.length === 0 && cancelled.length === 0) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '_No upcoming meetings._' } });
+  } else {
+    if (upcoming.length > 0) {
+      blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Upcoming' } });
+      upcoming.forEach(m => addRow(m, false));
+    }
+    if (cancelled.length > 0) {
+      blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Cancelled' } });
+      cancelled.forEach(m => addRow(m, true));
+    }
+  }
+
+  return {
+    type: 'modal',
+    callback_id: 'meetings_list',
+    title: { type: 'plain_text', text: 'Meetings' },
+    close: { type: 'plain_text', text: 'Close' },
+    ...(adminUser ? { submit: { type: 'plain_text', text: 'Create Meeting' } } : {}),
+    blocks,
+  };
+}
+
+function buildCreateModal(isRecurring: boolean): any {
   const baseBlocks: any[] = [
     {
       type: 'input',
@@ -46,15 +103,40 @@ function buildNewMeetingModal(isRecurring: boolean): any {
   };
   if (isRecurring) recurringCheckbox.initial_options = [recurringOption];
 
-  if (!isRecurring) {
-    return {
-      type: 'modal',
-      callback_id: 'new_meeting',
-      title: { type: 'plain_text', text: 'New Meeting' },
-      submit: { type: 'plain_text', text: 'Create' },
-      close: { type: 'plain_text', text: 'Cancel' },
-      blocks: [
-        ...baseBlocks,
+  const extraBlocks = isRecurring
+    ? [
+        {
+          type: 'actions',
+          block_id: 'recurring_block',
+          elements: [recurringCheckbox],
+        },
+        {
+          type: 'input',
+          block_id: 'days_block',
+          element: {
+            type: 'checkboxes',
+            action_id: 'days',
+            options: DAYS_OF_WEEK.map((day, i) => ({
+              text: { type: 'plain_text', text: day },
+              value: String(i),
+            })),
+          },
+          label: { type: 'plain_text', text: 'Repeat on' },
+        },
+        {
+          type: 'input',
+          block_id: 'time_block',
+          element: { type: 'timepicker', action_id: 'time' },
+          label: { type: 'plain_text', text: 'Time of day' },
+        },
+        {
+          type: 'input',
+          block_id: 'end_date_block',
+          element: { type: 'datepicker', action_id: 'end_date' },
+          label: { type: 'plain_text', text: 'Repeat until' },
+        },
+      ]
+    : [
         {
           type: 'input',
           block_id: 'datetime_block',
@@ -66,56 +148,172 @@ function buildNewMeetingModal(isRecurring: boolean): any {
           block_id: 'recurring_block',
           elements: [recurringCheckbox],
         },
-      ],
-    };
-  }
+      ];
 
   return {
     type: 'modal',
-    callback_id: 'new_meeting',
-    title: { type: 'plain_text', text: 'New Meeting' },
+    callback_id: 'meetings_create',
+    title: { type: 'plain_text', text: 'Create Meeting' },
     submit: { type: 'plain_text', text: 'Create' },
-    close: { type: 'plain_text', text: 'Cancel' },
-    blocks: [
-      ...baseBlocks,
-      {
-        type: 'actions',
-        block_id: 'recurring_block',
-        elements: [recurringCheckbox],
-      },
-      {
-        type: 'input',
-        block_id: 'days_block',
-        element: {
-          type: 'checkboxes',
-          action_id: 'days',
-          options: DAYS_OF_WEEK.map((day, i) => ({
-            text: { type: 'plain_text', text: day },
-            value: String(i),
-          })),
+    close: { type: 'plain_text', text: 'Back' },
+    blocks: [...baseBlocks, ...extraBlocks],
+  };
+}
+
+function buildEditModal(
+  meeting: { id: number; name: string; description: string; scheduled_at: number; channel_id: string; cancelled: number },
+): any {
+  const actionButtons: any[] = meeting.cancelled
+    ? [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Restore Meeting' },
+          action_id: 'meeting_restore',
+          value: String(meeting.id),
+          style: 'primary',
         },
-        label: { type: 'plain_text', text: 'Repeat on' },
+      ]
+    : [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Cancel Meeting' },
+          action_id: 'meeting_cancel',
+          value: String(meeting.id),
+          style: 'danger',
+          confirm: {
+            title: { type: 'plain_text', text: 'Cancel Meeting?' },
+            text: { type: 'mrkdwn', text: `This will mark *${meeting.name}* as cancelled.` },
+            confirm: { type: 'plain_text', text: 'Cancel Meeting' },
+            deny: { type: 'plain_text', text: 'Keep' },
+            style: 'danger',
+          },
+        },
+      ];
+
+  actionButtons.push({
+    type: 'button',
+    text: { type: 'plain_text', text: 'Delete' },
+    action_id: 'meeting_delete',
+    value: String(meeting.id),
+    style: 'danger',
+    confirm: {
+      title: { type: 'plain_text', text: 'Delete Meeting?' },
+      text: { type: 'mrkdwn', text: `This will permanently delete *${meeting.name}* and all RSVPs.` },
+      confirm: { type: 'plain_text', text: 'Delete' },
+      deny: { type: 'plain_text', text: 'Keep' },
+      style: 'danger',
+    },
+  });
+
+  return {
+    type: 'modal',
+    callback_id: 'meetings_edit',
+    private_metadata: JSON.stringify({ meetingId: meeting.id }),
+    title: { type: 'plain_text', text: 'Edit Meeting' },
+    submit: { type: 'plain_text', text: 'Save' },
+    close: { type: 'plain_text', text: 'Back' },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'name_block',
+        element: { type: 'plain_text_input', action_id: 'name', initial_value: meeting.name },
+        label: { type: 'plain_text', text: 'Meeting name' },
       },
       {
         type: 'input',
-        block_id: 'time_block',
-        element: { type: 'timepicker', action_id: 'time' },
-        label: { type: 'plain_text', text: 'Time of day' },
+        block_id: 'description_block',
+        element: { type: 'plain_text_input', action_id: 'description', multiline: true, initial_value: meeting.description },
+        label: { type: 'plain_text', text: 'Description' },
+        optional: true,
       },
       {
         type: 'input',
-        block_id: 'end_date_block',
-        element: { type: 'datepicker', action_id: 'end_date' },
-        label: { type: 'plain_text', text: 'Repeat until' },
+        block_id: 'datetime_block',
+        element: { type: 'datetimepicker', action_id: 'datetime', initial_date_time: meeting.scheduled_at },
+        label: { type: 'plain_text', text: 'Date & Time' },
       },
+      {
+        type: 'input',
+        block_id: 'channel_block',
+        element: { type: 'channels_select', action_id: 'channel', initial_channel: meeting.channel_id },
+        label: { type: 'plain_text', text: 'Channel' },
+      },
+      { type: 'divider' },
+      { type: 'actions', elements: actionButtons },
     ],
   };
 }
 
+function buildCancelledAnnouncementBlocks(
+  meeting: { name: string; description: string; scheduled_at: number },
+): any[] {
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `~*${meeting.name}*~${meeting.description ? `\n~${meeting.description}~` : ''}\n\n~📅 <!date^${meeting.scheduled_at}^{date_long_pretty} at {time}|${new Date(meeting.scheduled_at * 1000).toISOString()}>~`,
+      },
+    },
+    {
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: '🚫 This meeting has been cancelled.' }],
+    },
+  ];
+}
+
+async function refreshListView(client: any, env: Env, rootViewId: string, isAdminUser: boolean): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const [upcomingMeetings, cancelledMeetings] = await Promise.all([
+    env.DB.prepare('SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 0 ORDER BY scheduled_at LIMIT 15').bind(now).all<{ id: number; name: string; scheduled_at: number }>(),
+    env.DB.prepare('SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 1 ORDER BY scheduled_at LIMIT 10').bind(now).all<{ id: number; name: string; scheduled_at: number }>(),
+  ]);
+  await client.views.update({
+    view_id: rootViewId,
+    view: buildListModal(upcomingMeetings.results, cancelledMeetings.results, isAdminUser),
+  });
+}
+
+async function updateAnnouncement(
+  client: any,
+  env: Env,
+  meeting: { id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string; cancelled: number },
+): Promise<void> {
+  if (!meeting.message_ts) return;
+  if (meeting.cancelled) {
+    await client.chat.update({
+      channel: meeting.channel_id,
+      ts: meeting.message_ts,
+      text: `[Cancelled] ${meeting.name}`,
+      blocks: buildCancelledAnnouncementBlocks(meeting),
+    });
+    return;
+  }
+  const attendanceRows = await env.DB.prepare('SELECT user_id, status FROM attendance WHERE meeting_id = ?')
+    .bind(meeting.id).all<{ user_id: string; status: string }>();
+  const attendees = { yes: [] as string[], maybe: [] as string[], no: [] as string[] };
+  for (const row of attendanceRows.results) {
+    attendees[row.status as 'yes' | 'maybe' | 'no'].push(row.user_id);
+  }
+  await client.chat.update({
+    channel: meeting.channel_id,
+    ts: meeting.message_ts,
+    text: `Meeting: ${meeting.name}`,
+    blocks: buildAnnouncementBlocks(meeting, attendees),
+  });
+}
+
 function buildAnnouncementBlocks(
   meeting: { id: number; name: string; description: string; scheduled_at: number },
-  counts: { yes: number; maybe: number; no: number },
+  attendees: { yes: string[]; maybe: string[]; no: string[] },
 ): any[] {
+  const mentionList = (ids: string[]) => ids.map(id => `<@${id}>`).join(', ');
+  const contextParts: string[] = [];
+  if (attendees.yes.length) contextParts.push(`✅ Going: ${mentionList(attendees.yes)}`);
+  if (attendees.maybe.length) contextParts.push(`🤔 Maybe: ${mentionList(attendees.maybe)}`);
+  if (attendees.no.length) contextParts.push(`❌ Can't make it: ${mentionList(attendees.no)}`);
+  if (!contextParts.length) contextParts.push('No RSVPs yet');
+
   return [
     {
       type: 'section',
@@ -126,10 +324,7 @@ function buildAnnouncementBlocks(
     },
     {
       type: 'context',
-      elements: [{
-        type: 'mrkdwn',
-        text: `✅ ${counts.yes} going · 🤔 ${counts.maybe} maybe · ❌ ${counts.no} can't make it`,
-      }],
+      elements: [{ type: 'mrkdwn', text: contextParts.join('\n') }],
     },
     { type: 'divider' },
     {
@@ -172,10 +367,7 @@ function buildRsvpModal(meetingId: number, status: 'yes' | 'maybe' | 'no', meeti
     blocks: [
       {
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `Responding *${label}* to *${meetingName}*.`,
-        },
+        text: { type: 'mrkdwn', text: `Responding *${label}* to *${meetingName}*.` },
       },
       {
         type: 'input',
@@ -189,14 +381,41 @@ function buildRsvpModal(meetingId: number, status: 'yes' | 'maybe' | 'no', meeti
 }
 
 const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
-  slackApp.command('/newmeeting', async ({ context, payload }) => {
-    if (!await isAdmin(env.DB, context.client, context.userId)) {
-      await context.respond({ response_type: 'ephemeral', text: '❌ Only workspace admins can create meetings.' });
-      return;
-    }
+  slackApp.command('/meetings', async ({ context, payload }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const [adminUser, upcomingMeetings, cancelledMeetings] = await Promise.all([
+      isAdmin(env.DB, context.client, context.userId),
+      env.DB.prepare(
+        'SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 0 ORDER BY scheduled_at LIMIT 15'
+      ).bind(now).all<{ id: number; name: string; scheduled_at: number }>(),
+      env.DB.prepare(
+        'SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 1 ORDER BY scheduled_at LIMIT 10'
+      ).bind(now).all<{ id: number; name: string; scheduled_at: number }>(),
+    ]);
+
     await context.client.views.open({
       trigger_id: payload.trigger_id,
-      view: buildNewMeetingModal(false),
+      view: buildListModal(upcomingMeetings.results, cancelledMeetings.results, adminUser),
+    });
+  });
+
+  slackApp.viewSubmission('meetings_list', async () => ({
+    response_action: 'push',
+    view: buildCreateModal(false),
+  }));
+
+  slackApp.action('meeting_open_edit', async ({ context, payload }) => {
+    if (!await isAdmin(env.DB, context.client, context.userId)) return;
+    const meetingId = Number((payload as any).actions[0].value);
+    const meeting = await env.DB.prepare(
+      'SELECT id, name, description, scheduled_at, channel_id, cancelled FROM meeting WHERE id = ?'
+    ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; cancelled: number }>();
+
+    if (!meeting) return;
+
+    await context.client.views.push({
+      trigger_id: (payload as any).trigger_id,
+      view: buildEditModal(meeting),
     });
   });
 
@@ -205,12 +424,70 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
     await context.client.views.update({
       view_id: (payload as any).view.id,
       hash: (payload as any).view.hash,
-      view: buildNewMeetingModal(isRecurring),
+      view: buildCreateModal(isRecurring),
     });
   });
 
+  slackApp.action('meeting_cancel', async ({ context, payload }) => {
+    if (!await isAdmin(env.DB, context.client, context.userId)) return;
+    const meetingId = Number((payload as any).actions[0].value);
+    const rootViewId = (payload as any).view.root_view_id;
+    await env.DB.prepare('UPDATE meeting SET cancelled = 1 WHERE id = ?').bind(meetingId).run();
+    const meeting = await env.DB.prepare(
+      'SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?'
+    ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string; cancelled: number }>();
+    if (meeting) {
+      await Promise.all([
+        context.client.views.update({ view_id: (payload as any).view.id, view: buildEditModal(meeting) }),
+        updateAnnouncement(context.client, env, meeting),
+        rootViewId ? refreshListView(context.client, env, rootViewId, true) : Promise.resolve(),
+      ]);
+    }
+  });
+
+  slackApp.action('meeting_restore', async ({ context, payload }) => {
+    if (!await isAdmin(env.DB, context.client, context.userId)) return;
+    const meetingId = Number((payload as any).actions[0].value);
+    const rootViewId = (payload as any).view.root_view_id;
+    await env.DB.prepare('UPDATE meeting SET cancelled = 0 WHERE id = ?').bind(meetingId).run();
+    const meeting = await env.DB.prepare(
+      'SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?'
+    ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string; cancelled: number }>();
+    if (meeting) {
+      await Promise.all([
+        context.client.views.update({ view_id: (payload as any).view.id, view: buildEditModal(meeting) }),
+        updateAnnouncement(context.client, env, meeting),
+        rootViewId ? refreshListView(context.client, env, rootViewId, true) : Promise.resolve(),
+      ]);
+    }
+  });
+
+  slackApp.action('meeting_delete', async ({ context, payload }) => {
+    if (!await isAdmin(env.DB, context.client, context.userId)) return;
+    const meetingId = Number((payload as any).actions[0].value);
+    const rootViewId = (payload as any).view.root_view_id;
+    const meeting = await env.DB.prepare(
+      'SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?'
+    ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string; cancelled: number }>();
+    await env.DB.prepare('DELETE FROM meeting WHERE id = ?').bind(meetingId).run();
+    await Promise.all([
+      context.client.views.update({
+        view_id: (payload as any).view.id,
+        view: {
+          type: 'modal',
+          callback_id: 'meeting_deleted',
+          title: { type: 'plain_text', text: 'Meeting Deleted' },
+          close: { type: 'plain_text', text: 'Close' },
+          blocks: [{ type: 'section', text: { type: 'mrkdwn', text: 'The meeting has been deleted.' } }],
+        },
+      }),
+      meeting?.message_ts ? context.client.chat.delete({ channel: meeting.channel_id, ts: meeting.message_ts }).catch(() => {}) : Promise.resolve(),
+      rootViewId ? refreshListView(context.client, env, rootViewId, true) : Promise.resolve(),
+    ]);
+  });
+
   slackApp.viewSubmission(
-    'new_meeting',
+    'meetings_create',
     async () => ({ response_action: 'clear' }),
     async (req) => {
       try {
@@ -237,28 +514,61 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
           if (!series) return;
 
           for (const scheduled_at of generateDates(days, timeOfDay, startUnix, endUnix)) {
-            const post = await client.chat.postMessage({
+            const row = await env.DB.prepare(
+              'INSERT INTO meeting (series_id, name, description, scheduled_at, channel_id, message_ts) VALUES (?, ?, ?, ?, ?, ?) RETURNING id'
+            ).bind(series.id, name, description, scheduled_at, channelId, '').first<{ id: number }>();
+            if (!row) continue;
+            const post = await postWithJoin(client, channelId, {
               channel: channelId,
               text: `New meeting: ${name}`,
-              blocks: buildAnnouncementBlocks({ id: 0, name, description, scheduled_at }, { yes: 0, maybe: 0, no: 0 }),
+              blocks: buildAnnouncementBlocks({ id: row.id, name, description, scheduled_at }, { yes: [], maybe: [], no: [] }),
             });
-            await env.DB.prepare(
-              'INSERT INTO meeting (series_id, name, description, scheduled_at, channel_id, message_ts) VALUES (?, ?, ?, ?, ?, ?)'
-            ).bind(series.id, name, description, scheduled_at, (post as any).channel, (post as any).ts).run();
+            await env.DB.prepare('UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?')
+              .bind((post as any).channel, (post as any).ts, row.id).run();
           }
         } else {
           const scheduled_at: number = flat.datetime?.selected_date_time ?? 0;
-          const post = await client.chat.postMessage({
+          const row = await env.DB.prepare(
+            'INSERT INTO meeting (name, description, scheduled_at, channel_id, message_ts) VALUES (?, ?, ?, ?, ?) RETURNING id'
+          ).bind(name, description, scheduled_at, channelId, '').first<{ id: number }>();
+          if (!row) return;
+          const post = await postWithJoin(client, channelId, {
             channel: channelId,
             text: `New meeting: ${name}`,
-            blocks: buildAnnouncementBlocks({ id: 0, name, description, scheduled_at }, { yes: 0, maybe: 0, no: 0 }),
+            blocks: buildAnnouncementBlocks({ id: row.id, name, description, scheduled_at }, { yes: [], maybe: [], no: [] }),
           });
-          await env.DB.prepare(
-            'INSERT INTO meeting (name, description, scheduled_at, channel_id, message_ts) VALUES (?, ?, ?, ?, ?)'
-          ).bind(name, description, scheduled_at, (post as any).channel, (post as any).ts).run();
+          await env.DB.prepare('UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?')
+            .bind((post as any).channel, (post as any).ts, row.id).run();
         }
       } catch (err) {
-        console.error('new_meeting error:', err);
+        console.error('meetings_create error:', err);
+      }
+    },
+  );
+
+  slackApp.viewSubmission(
+    'meetings_edit',
+    async () => ({ response_action: 'clear' }),
+    async (req) => {
+      try {
+        const { meetingId } = JSON.parse(req.payload.view.private_metadata ?? '{}');
+        const flat = flattenState(req.payload.view.state.values);
+        const name: string = flat.name?.value ?? '';
+        const description: string = flat.description?.value ?? '';
+        const scheduled_at: number = flat.datetime?.selected_date_time ?? 0;
+        const channelId: string = flat.channel?.selected_channel ?? '';
+
+        await env.DB.prepare(
+          'UPDATE meeting SET name = ?, description = ?, scheduled_at = ?, channel_id = ? WHERE id = ?'
+        ).bind(name, description, scheduled_at, channelId, meetingId).run();
+
+        const meeting = await env.DB.prepare(
+          'SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?'
+        ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string; cancelled: number }>();
+
+        if (meeting) await updateAnnouncement(req.context.client, env, meeting);
+      } catch (err) {
+        console.error('meetings_edit error:', err);
       }
     },
   );
@@ -291,25 +601,24 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
           ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note
         `).bind(meetingId, userId, status, note).run();
 
-        const rows = await env.DB.prepare(
-          'SELECT status, COUNT(*) as cnt FROM attendance WHERE meeting_id = ? GROUP BY status'
-        ).bind(meetingId).all<{ status: string; cnt: number }>();
+        const [attendanceRows, meeting] = await Promise.all([
+          env.DB.prepare('SELECT user_id, status FROM attendance WHERE meeting_id = ?')
+            .bind(meetingId).all<{ user_id: string; status: string }>(),
+          env.DB.prepare('SELECT id, name, description, scheduled_at, channel_id, message_ts FROM meeting WHERE id = ?')
+            .bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string }>(),
+        ]);
 
-        const counts = { yes: 0, maybe: 0, no: 0 };
-        for (const row of rows.results) {
-          counts[row.status as 'yes' | 'maybe' | 'no'] = Number(row.cnt);
+        const attendees = { yes: [] as string[], maybe: [] as string[], no: [] as string[] };
+        for (const row of attendanceRows.results) {
+          attendees[row.status as 'yes' | 'maybe' | 'no'].push(row.user_id);
         }
-
-        const meeting = await env.DB.prepare(
-          'SELECT id, name, description, scheduled_at, channel_id, message_ts FROM meeting WHERE id = ?'
-        ).bind(meetingId).first<{ id: number; name: string; description: string; scheduled_at: number; channel_id: string; message_ts: string }>();
 
         if (meeting) {
           await req.context.client.chat.update({
             channel: meeting.channel_id,
             ts: meeting.message_ts,
             text: `Meeting: ${meeting.name}`,
-            blocks: buildAnnouncementBlocks(meeting, counts),
+            blocks: buildAnnouncementBlocks(meeting, attendees),
           });
         }
       } catch (err) {

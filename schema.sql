@@ -53,3 +53,10 @@ CREATE TABLE IF NOT EXISTS attendance (
   note       TEXT    NOT NULL DEFAULT '',
   PRIMARY KEY (meeting_id, user_id)
 );
+
+-- Web login sessions
+CREATE TABLE IF NOT EXISTS web_session (
+  id          TEXT    PRIMARY KEY,
+  user_id     TEXT    NOT NULL,
+  expires_at  INTEGER NOT NULL
+);

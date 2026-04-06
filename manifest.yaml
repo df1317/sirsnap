@@ -7,17 +7,17 @@ features:
     display_name: Sirsnap
     always_online: true
   slash_commands:
-    - command: /newmeeting
-      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev
-      description: Create a new meeting (admin only)
+    - command: /meetings
+      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
+      description: View and manage meetings
       should_escape: false
     - command: /setrole
-      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev
+      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
       description: Set a user's role (admin only)
       usage_hint: "[@user] [student|parent|alumni|mentor]"
       should_escape: false
     - command: /cdt
-      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev
+      url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
       description: Manage Component Design Teams (admin only)
       usage_hint: create | edit <name> | list
       should_escape: false
@@ -38,7 +38,7 @@ oauth_config:
 settings:
   interactivity:
     is_enabled: true
-    request_url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev
+    request_url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

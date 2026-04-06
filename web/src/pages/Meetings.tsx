@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { api, type Session, type Meeting, type AdminMeeting } from "../lib/api";
+import {
+	api,
+	type Session,
+	type Meeting,
+	type AdminMeeting,
+	type MeetingAttendance,
+} from "../lib/api";
 import { Layout } from "../components/Layout";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -25,6 +31,8 @@ import {
 	DialogTitle,
 	DialogFooter,
 } from "../components/ui/dialog";
+import { ScrollArea } from "../components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import {
 	Tabs,
 	TabsContent,
@@ -32,7 +40,7 @@ import {
 	TabsTrigger,
 } from "../components/ui/tabs";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, Plus } from "lucide-react";
+import { Pencil, Trash2, Plus, Check, HelpCircle, X } from "lucide-react";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -558,10 +566,96 @@ function EditMeetingDialog({
 	);
 }
 
+function MeetingAttendanceDialog({
+	meeting,
+	onClose,
+}: {
+	meeting: AdminMeeting;
+	onClose: () => void;
+}) {
+	const [attendance, setAttendance] = useState<MeetingAttendance[] | null>(
+		null,
+	);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		api
+			.getMeetingAttendance(meeting.id)
+			.then((data) => {
+				setAttendance(data);
+				setLoading(false);
+			})
+			.catch(() => setLoading(false));
+	}, [meeting.id]);
+
+	return (
+		<Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>Attendance: {meeting.name}</DialogTitle>
+				</DialogHeader>
+				{loading ? (
+					<div className="py-8 text-center text-sm text-muted-foreground">
+						Loading attendance...
+					</div>
+				) : attendance && attendance.length > 0 ? (
+					<ScrollArea className="max-h-[60vh]">
+						<div className="space-y-4 pr-4">
+							{attendance.map((a) => (
+								<div key={a.user_id} className="flex items-start gap-3">
+									<Avatar className="size-8 mt-0.5">
+										<AvatarImage src={a.avatar_url} />
+										<AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
+									</Avatar>
+									<div className="flex-1 space-y-1">
+										<div className="flex items-center justify-between">
+											<p className="text-sm font-medium leading-none">
+												{a.name}
+											</p>
+											<div className="flex items-center text-xs">
+												{a.status === "yes" && (
+													<span className="text-emerald-600 flex items-center gap-1">
+														<Check className="size-3" /> Yes
+													</span>
+												)}
+												{a.status === "maybe" && (
+													<span className="text-amber-600 flex items-center gap-1">
+														<HelpCircle className="size-3" /> Maybe
+													</span>
+												)}
+												{a.status === "no" && (
+													<span className="text-red-600 flex items-center gap-1">
+														<X className="size-3" /> No
+													</span>
+												)}
+											</div>
+										</div>
+										{a.note && (
+											<p className="text-sm text-muted-foreground bg-muted p-2 rounded-md mt-1">
+												{a.note}
+											</p>
+										)}
+									</div>
+								</div>
+							))}
+						</div>
+					</ScrollArea>
+				) : (
+					<div className="py-8 text-center text-sm text-muted-foreground">
+						No RSVPs yet.
+					</div>
+				)}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function AdminMeetingsView() {
 	const [meetings, setMeetings] = useState<AdminMeeting[]>([]);
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editMeeting, setEditMeeting] = useState<AdminMeeting | null>(null);
+	const [viewAttendanceMeeting, setViewAttendanceMeeting] =
+		useState<AdminMeeting | null>(null);
 	const now = Math.floor(Date.now() / 1000);
 
 	useEffect(() => {
@@ -628,11 +722,20 @@ function AdminMeetingsView() {
 			cell: ({ row }) => {
 				const m = row.original;
 				return (
-					<span className="flex items-center gap-2 text-xs text-muted-foreground">
-						<span className="text-emerald-600">✓{m.yes_count}</span>
-						<span className="text-amber-600">?{m.maybe_count}</span>
-						<span className="text-red-600">✗{m.no_count}</span>
-					</span>
+					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+						<span className="text-emerald-600 flex items-center gap-0.5">
+							<Check className="size-3" />
+							{m.yes_count}
+						</span>
+						<span className="text-amber-600 flex items-center gap-0.5">
+							<HelpCircle className="size-3" />
+							{m.maybe_count}
+						</span>
+						<span className="text-red-600 flex items-center gap-0.5">
+							<X className="size-3" />
+							{m.no_count}
+						</span>
+					</div>
 				);
 			},
 		},
@@ -690,6 +793,7 @@ function AdminMeetingsView() {
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter meetings…"
+				onRowClick={(m) => setViewAttendanceMeeting(m)}
 			/>
 
 			<CreateMeetingDialog
@@ -705,6 +809,13 @@ function AdminMeetingsView() {
 					onSaved={(m) =>
 						setMeetings((prev) => prev.map((x) => (x.id === m.id ? m : x)))
 					}
+				/>
+			)}
+
+			{viewAttendanceMeeting && (
+				<MeetingAttendanceDialog
+					meeting={viewAttendanceMeeting}
+					onClose={() => setViewAttendanceMeeting(null)}
 				/>
 			)}
 		</div>

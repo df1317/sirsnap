@@ -28,6 +28,14 @@ export type Meeting = {
 	no_count: number;
 };
 
+export type MeetingAttendance = {
+	user_id: string;
+	status: string;
+	note: string;
+	name: string;
+	avatar_url: string;
+};
+
 export type AdminMeeting = {
 	id: number;
 	name: string;
@@ -156,6 +164,9 @@ export const api = {
 	// Meeting Admin APIs
 	async getAdminMeetings(): Promise<AdminMeeting[]> {
 		return (await apiFetch("/api/admin/meetings")).json();
+	},
+	async getMeetingAttendance(id: number): Promise<MeetingAttendance[]> {
+		return (await apiFetch(`/api/admin/meetings/${id}/attendance`)).json();
 	},
 	async createMeeting(data: {
 		name: string;

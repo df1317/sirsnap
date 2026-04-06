@@ -333,6 +333,26 @@ export function createWebApp(env: Env) {
 		);
 	});
 
+	api.get("/admin/meetings/:id/attendance", requireAdmin(), async (c) => {
+		const id = Number(c.req.param("id"));
+		const rows = await c.env.DB.prepare(
+			`SELECT a.user_id, a.status, a.note, u.name, u.avatar_url
+       FROM attendance a
+       JOIN slack_user u ON u.user_id = a.user_id
+       WHERE a.meeting_id = ?
+       ORDER BY u.name COLLATE NOCASE`,
+		)
+			.bind(id)
+			.all<{
+				user_id: string;
+				status: string;
+				note: string;
+				name: string;
+				avatar_url: string;
+			}>();
+		return c.json(rows.results);
+	});
+
 	api.post("/admin/meetings", requireAdmin(), async (c) => {
 		const body = await c.req.json<{
 			name: string;

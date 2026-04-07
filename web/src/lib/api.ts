@@ -105,6 +105,9 @@ export const api = {
 	async getMeetings(): Promise<Meeting[]> {
 		return (await apiFetch("/api/meetings")).json();
 	},
+	async getPastMeetings(): Promise<Meeting[]> {
+		return (await apiFetch("/api/meetings/past")).json();
+	},
 	async getCdts(): Promise<Cdt[]> {
 		return (await apiFetch("/api/cdts")).json();
 	},

@@ -2,7 +2,7 @@ import { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import * as features from "./features/index";
 import { createWebApp } from "./web/app";
 import { syncAllUsers } from "./web/lib/sync";
-import { checkPendingMeetings } from "./lib/announcements";
+import { checkPendingMeetings, flushPendingAnnouncements } from "./lib/announcements";
 
 export type Env = SlackEdgeAppEnv & {
 	DB: D1Database;
@@ -31,8 +31,12 @@ export default {
 		return createWebApp(env).fetch(request, env, ctx);
 	},
 
-	async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-		ctx.waitUntil(syncAllUsers(env.DB, env.SLACK_ADMIN_TOKEN));
-		ctx.waitUntil(checkPendingMeetings(env));
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+		ctx.waitUntil(flushPendingAnnouncements(env));
+		
+		if (event.cron === "0 6 * * *") {
+			ctx.waitUntil(syncAllUsers(env.DB, env.SLACK_ADMIN_TOKEN));
+			ctx.waitUntil(checkPendingMeetings(env));
+		}
 	},
 };

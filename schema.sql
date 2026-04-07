@@ -68,3 +68,9 @@ CREATE TABLE IF NOT EXISTS slack_cache (
   value      TEXT    NOT NULL,
   expires_at INTEGER NOT NULL
 );
+
+-- Queue for batching Slack announcement updates to prevent rate-limits
+CREATE TABLE IF NOT EXISTS pending_announcement (
+  meeting_id INTEGER PRIMARY KEY REFERENCES meeting(id) ON DELETE CASCADE,
+  queued_at  INTEGER NOT NULL
+);

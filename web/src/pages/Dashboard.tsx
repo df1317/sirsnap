@@ -93,14 +93,14 @@ function FeaturedMeeting({
 						</p>
 						<p className="text-xs text-muted-foreground mt-1">
 							<span className="text-emerald-600">
-								{meeting.yes_count} going
+								{meeting.yes_count || 0} going
 							</span>
 							<span className="mx-1.5">·</span>
 							<span className="text-amber-600">
-								{meeting.maybe_count} maybe
+								{meeting.maybe_count || 0} maybe
 							</span>
 							<span className="mx-1.5">·</span>
-							<span className="text-red-600">{meeting.no_count} can't go</span>
+							<span className="text-red-600">{meeting.no_count || 0} can't go</span>
 						</p>
 						{meeting.description && (
 							<p className="text-sm text-muted-foreground mt-2 leading-relaxed">
@@ -243,6 +243,16 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 		hour: "numeric",
 		minute: "2-digit",
 	});
+	let timeStr = time;
+	if (meeting.end_time) {
+		const endD = new Date(meeting.end_time * 1000);
+		const endTime = endD.toLocaleTimeString("en-US", {
+			hour: "numeric",
+			minute: "2-digit",
+		});
+		timeStr = `${time} - ${endTime}`;
+	}
+
 	const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
 
 	return (
@@ -258,17 +268,10 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 			<div className="flex-1 min-w-0">
 				<p className="text-sm font-medium truncate">{meeting.name}</p>
 				<p className="text-xs text-muted-foreground">
-					{weekday} · {time}
+					{weekday} · {timeStr}
 				</p>
 			</div>
 			<div className="flex items-center gap-3 shrink-0">
-				<span className="text-xs text-muted-foreground">
-					<span className="text-emerald-600">{meeting.yes_count}</span>
-					<span className="mx-0.5">/</span>
-					<span className="text-amber-600">{meeting.maybe_count}</span>
-					<span className="mx-0.5">/</span>
-					<span className="text-red-600">{meeting.no_count}</span>
-				</span>
 				{meeting.my_status && (
 					<Badge
 						variant={
@@ -287,6 +290,13 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 								: "Can't go"}
 					</Badge>
 				)}
+				<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+					<span className="text-emerald-600">{meeting.yes_count || 0}</span>
+					<span className="mx-0.5">/</span>
+					<span className="text-amber-600">{meeting.maybe_count || 0}</span>
+					<span className="mx-0.5">/</span>
+					<span className="text-red-600">{meeting.no_count || 0}</span>
+				</div>
 			</div>
 		</div>
 	);
@@ -319,18 +329,37 @@ export function Dashboard({ session }: { session: Session }) {
 		);
 
 	const upcoming = meetings
-		.filter((m) => m.scheduled_at > Math.floor(Date.now() / 1000))
+		.filter((m) => (m.end_time || m.scheduled_at) > Math.floor(Date.now() / 1000))
 		.sort((a, b) => a.scheduled_at - b.scheduled_at);
 
 	const featured = upcoming[0];
 	const rest = upcoming.slice(1);
 
-	const updateRsvp = (id: number, status: Meeting["my_status"], note: string) =>
+	const updateRsvp = (id: number, status: Meeting["my_status"], note: string) => {
 		setMeetings((ms) =>
-			ms.map((m) =>
-				m.id === id ? { ...m, my_status: status, my_note: note } : m,
-			),
+			ms.map((m) => {
+				if (m.id === id) {
+					const prevStatus = m.my_status;
+
+					// Optimistically update counts
+					let yes_count = m.yes_count;
+					let maybe_count = m.maybe_count;
+					let no_count = m.no_count;
+
+					if (prevStatus === "yes") yes_count = Math.max(0, yes_count - 1);
+					if (prevStatus === "maybe") maybe_count = Math.max(0, maybe_count - 1);
+					if (prevStatus === "no") no_count = Math.max(0, no_count - 1);
+
+					if (status === "yes") yes_count += 1;
+					if (status === "maybe") maybe_count += 1;
+					if (status === "no") no_count += 1;
+
+					return { ...m, my_status: status, my_note: note, yes_count, maybe_count, no_count };
+				}
+				return m;
+			}),
 		);
+	};
 
 	return (
 		<Layout session={session}>
@@ -361,9 +390,12 @@ export function Dashboard({ session }: { session: Session }) {
 
 					<div className="space-y-3">
 						<h2 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-							CDTs · {cdts.length}
+							My CDT
 						</h2>
-						<CdtList cdts={cdts} users={users} />
+						<CdtList 
+							cdts={cdts.filter(c => users.find(u => u.user_id === session.user_id)?.cdt_id === c.id)} 
+							users={users.filter(u => u.cdt_id === users.find(user => user.user_id === session.user_id)?.cdt_id)} 
+						/>
 					</div>
 				</div>
 

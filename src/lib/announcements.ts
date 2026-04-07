@@ -199,3 +199,48 @@ export async function checkPendingMeetings(env: Env) {
 		}
 	}
 }
+
+export async function flushPendingAnnouncements(env: Env) {
+	const pending = await env.DB.prepare(
+		`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, m.channel_id, m.message_ts, m.cancelled 
+		 FROM pending_announcement p
+		 JOIN meeting m ON m.id = p.meeting_id
+		 ORDER BY p.queued_at ASC
+		 LIMIT 50`
+	).all<{
+		id: number;
+		name: string;
+		description: string;
+		scheduled_at: number;
+		end_time: number | null;
+		channel_id: string;
+		message_ts: string;
+		cancelled: number;
+	}>();
+
+	if (!pending.results.length) return;
+
+	const botClient = new SlackAPIClient(env.SLACK_BOT_TOKEN);
+	const processedIds: number[] = [];
+
+	for (const meeting of pending.results) {
+		try {
+			if (meeting.message_ts) {
+				await updateAnnouncement(botClient, env.DB, meeting);
+			}
+			processedIds.push(meeting.id);
+		} catch (err) {
+			console.error(`Failed to update announcement for meeting ${meeting.id}:`, err);
+			// Still mark as processed so it doesn't block the queue forever, 
+			// it will just be retried next time someone RSVPs.
+			processedIds.push(meeting.id);
+		}
+	}
+
+	if (processedIds.length > 0) {
+		const placeholders = processedIds.map(() => "?").join(",");
+		await env.DB.prepare(`DELETE FROM pending_announcement WHERE meeting_id IN (${placeholders})`)
+			.bind(...processedIds)
+			.run();
+	}
+}

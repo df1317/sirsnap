@@ -28,7 +28,10 @@
 		"HOST": "https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev"
 	},
 	"triggers": {
-		"crons": ["0 6 * * *"]
+		"crons": [
+			"* * * * *",
+			"0 6 * * *"
+		]
 	},
 	"assets": {
 		"directory": "./web/dist",

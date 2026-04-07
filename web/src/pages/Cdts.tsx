@@ -130,7 +130,7 @@ function CdtsListView({ users, cdts }: { users: User[]; cdts: Cdt[] }) {
 						name={group.name}
 						count={group.members.length}
 						users={group.members}
-						showRole={false}
+						showRole={true}
 					/>
 					{gi < grouped.length - 1 && <Separator />}
 				</div>

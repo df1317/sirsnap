@@ -94,12 +94,44 @@ export function createWebApp(env: Env) {
               (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
        FROM meeting m
        LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE m.scheduled_at > ? AND m.cancelled = 0
+       WHERE (m.scheduled_at > ? OR (m.end_time IS NOT NULL AND m.end_time > ?)) AND m.cancelled = 0
        ORDER BY m.scheduled_at LIMIT 10`,
 		)
-			.bind(session.user_id, now)
+			.bind(session.user_id, now, now)
 			.all();
-		return c.json(rows.results);
+		
+		// The SQLite query returns yes_count/maybe_count/no_count as BigInts or numbers.
+		// If they come back null due to an empty DB row, default to 0.
+		return c.json(rows.results.map((r: any) => ({
+			...r,
+			yes_count: Number(r.yes_count || 0),
+			maybe_count: Number(r.maybe_count || 0),
+			no_count: Number(r.no_count || 0)
+		})));
+	});
+
+	api.get("/meetings/past", requireSession(), async (c) => {
+		const session = c.get("session")!;
+		const now = Math.floor(Date.now() / 1000);
+		const rows = await c.env.DB.prepare(
+			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
+              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'yes') AS yes_count,
+              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'maybe') AS maybe_count,
+              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
+       FROM meeting m
+       LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
+       WHERE (m.scheduled_at <= ? AND (m.end_time IS NULL OR m.end_time <= ?)) AND m.cancelled = 0
+       ORDER BY m.scheduled_at DESC LIMIT 20`,
+		)
+			.bind(session.user_id, now, now)
+			.all();
+		
+		return c.json(rows.results.map((r: any) => ({
+			...r,
+			yes_count: Number(r.yes_count || 0),
+			maybe_count: Number(r.maybe_count || 0),
+			no_count: Number(r.no_count || 0)
+		})));
 	});
 
 	api.post("/rsvp/:meetingId", requireSession(), async (c) => {
@@ -112,35 +144,19 @@ export function createWebApp(env: Env) {
 		if (!["yes", "maybe", "no"].includes(status))
 			return c.json({ error: "Invalid status" }, 400);
 
-		await c.env.DB.prepare(
-			`INSERT INTO attendance (meeting_id, user_id, status, note)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note`,
-		)
-			.bind(meetingId, session.user_id, status, note)
-			.run();
-
-		const meeting = await c.env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(meetingId)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				end_time: number | null;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
-
-		if (meeting) {
-			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
-			await updateAnnouncement(botClient, c.env.DB, meeting).catch((err) =>
-				console.error("rsvp announcement update failed:", err),
-			);
-		}
+		const now = Math.floor(Date.now() / 1000);
+		
+		await c.env.DB.batch([
+			c.env.DB.prepare(
+				`INSERT INTO attendance (meeting_id, user_id, status, note)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note`,
+			).bind(meetingId, session.user_id, status, note),
+			c.env.DB.prepare(
+				`INSERT INTO pending_announcement (meeting_id, queued_at) VALUES (?, ?)
+				 ON CONFLICT (meeting_id) DO UPDATE SET queued_at = excluded.queued_at`
+			).bind(meetingId, now)
+		]);
 
 		return c.json({ ok: true });
 	});

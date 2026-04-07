@@ -31,7 +31,12 @@ import {
 	DialogTitle,
 	DialogFooter,
 } from "../components/ui/dialog";
-import { ScrollArea } from "../components/ui/scroll-area";
+import {
+	Sheet,
+	SheetContent,
+	SheetHeader,
+	SheetTitle,
+} from "../components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import {
 	Tabs,
@@ -89,181 +94,6 @@ function DatePicker({
 				<Calendar mode="single" selected={date} onSelect={onSelect} />
 			</PopoverContent>
 		</Popover>
-	);
-}
-
-function RsvpCard({
-	meeting,
-	onUpdate,
-}: {
-	meeting: Meeting;
-	onUpdate: (id: number, status: Meeting["my_status"], note: string) => void;
-}) {
-	const [pending, setPending] = useState<"yes" | "maybe" | "no" | null>(null);
-	const [note, setNote] = useState(meeting.my_note ?? "");
-	const [saving, setSaving] = useState(false);
-
-	const selectStatus = (s: "yes" | "maybe" | "no") => {
-		setPending(s);
-		setNote(meeting.my_note ?? "");
-	};
-
-	const confirm = async () => {
-		if (!pending || saving) return;
-		setSaving(true);
-		try {
-			await api.rsvp(meeting.id, pending, note);
-			onUpdate(meeting.id, pending, note);
-			setPending(null);
-		} finally {
-			setSaving(false);
-		}
-	};
-
-	const cancel = () => {
-		setPending(null);
-		setNote(meeting.my_note ?? "");
-	};
-
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") cancel();
-		};
-		if (pending) window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [pending]);
-
-	const active = pending ?? meeting.my_status;
-
-	const d = new Date(meeting.scheduled_at * 1000);
-	const month = d.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
-	const day = d.getDate();
-
-	let timeStr = d.toLocaleTimeString("en-US", {
-		hour: "numeric",
-		minute: "2-digit",
-	});
-
-	if (meeting.end_time) {
-		const endDt = new Date(meeting.end_time * 1000);
-		timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-
-		const durationMinutes = Math.round(
-			(meeting.end_time - meeting.scheduled_at) / 60,
-		);
-		const hours = Math.floor(durationMinutes / 60);
-		const mins = durationMinutes % 60;
-		if (hours > 0 && mins > 0) {
-			timeStr += ` (${hours}h ${mins}m)`;
-		} else if (hours > 0) {
-			timeStr += ` (${hours} hr)`;
-		} else {
-			timeStr += ` (${mins} min)`;
-		}
-	}
-
-	const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
-
-	return (
-		<Card>
-			<CardContent className="pt-4">
-				<div className="flex gap-4">
-					<div className="shrink-0 w-11 flex flex-col items-center justify-start pt-0.5">
-						<span className="text-[10px] font-semibold tracking-widest text-primary uppercase">
-							{month}
-						</span>
-						<span className="text-2xl font-bold leading-tight text-foreground">
-							{day}
-						</span>
-					</div>
-
-					<div className="flex-1 min-w-0">
-						<p className="font-semibold text-[15px] leading-snug">
-							{meeting.name}
-						</p>
-						<p className="text-xs text-muted-foreground mt-0.5">
-							{weekday} · {timeStr}
-						</p>
-						<p className="text-xs text-muted-foreground mt-0.5">
-							<span className="text-emerald-600">
-								{meeting.yes_count} going
-							</span>
-							<span className="mx-1.5">·</span>
-							<span className="text-amber-600">
-								{meeting.maybe_count} maybe
-							</span>
-							<span className="mx-1.5">·</span>
-							<span className="text-red-600">{meeting.no_count} can't go</span>
-						</p>
-						{meeting.description && (
-							<p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-								{meeting.description}
-							</p>
-						)}
-
-						<div className="mt-3 space-y-2">
-							<div className="flex gap-1.5">
-								{(["yes", "maybe", "no"] as const).map((s) => {
-									const labels = {
-										yes: "Going",
-										maybe: "Maybe",
-										no: "Can't go",
-									};
-									return (
-										<Button
-											key={s}
-											size="sm"
-											variant={active === s ? "default" : "outline"}
-											onClick={() => selectStatus(s)}
-										>
-											{labels[s]}
-										</Button>
-									);
-								})}
-							</div>
-
-							{meeting.my_status && !pending && meeting.my_note && (
-								<p className="text-xs text-muted-foreground italic pl-0.5">
-									"{meeting.my_note}"
-								</p>
-							)}
-
-							{pending && (
-								<div className="flex gap-2 items-start">
-									<Textarea
-										className="flex-1 text-xs resize-none"
-										rows={2}
-										placeholder="Add a note (optional)"
-										value={note}
-										onChange={(e) => setNote(e.target.value)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" && !e.shiftKey) {
-												e.preventDefault();
-												confirm();
-											}
-										}}
-										autoFocus
-									/>
-									<div className="flex flex-col gap-1 shrink-0">
-										<Button size="sm" onClick={confirm} disabled={saving}>
-											{saving ? "…" : "Save"}
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											className="text-muted-foreground"
-											onClick={cancel}
-										>
-											Cancel
-										</Button>
-									</div>
-								</div>
-							)}
-						</div>
-					</div>
-				</div>
-			</CardContent>
-		</Card>
 	);
 }
 
@@ -652,64 +482,62 @@ function MeetingAttendanceDialog({
 	}, [meeting.id]);
 
 	return (
-		<Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-			<DialogContent className="sm:max-w-md">
-				<DialogHeader>
-					<DialogTitle>Attendance: {meeting.name}</DialogTitle>
-				</DialogHeader>
+		<Sheet open={true} onOpenChange={(open) => !open && onClose()}>
+			<SheetContent className="overflow-y-auto">
+				<SheetHeader className="pb-0">
+					<SheetTitle className="text-base">Attendance: {meeting.name}</SheetTitle>
+				</SheetHeader>
 				{loading ? (
 					<div className="py-8 text-center text-sm text-muted-foreground">
 						Loading attendance...
 					</div>
 				) : attendance && attendance.length > 0 ? (
-					<ScrollArea className="max-h-[60vh]">
-						<div className="space-y-4 pr-4">
-							{attendance.map((a) => (
-								<div key={a.user_id} className="flex items-start gap-3">
-									<Avatar className="size-8 mt-0.5">
-										<AvatarImage src={a.avatar_url} />
-										<AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
-									</Avatar>
-									<div className="flex-1 space-y-1">
-										<div className="flex items-center justify-between">
-											<p className="text-sm font-medium leading-none">
-												{a.name}
-											</p>
-											<div className="flex items-center text-xs">
-												{a.status === "yes" && (
-													<span className="text-emerald-600 flex items-center gap-1">
-														<Check className="size-3" /> Yes
-													</span>
-												)}
-												{a.status === "maybe" && (
-													<span className="text-amber-600 flex items-center gap-1">
-														<HelpCircle className="size-3" /> Maybe
-													</span>
-												)}
-												{a.status === "no" && (
-													<span className="text-red-600 flex items-center gap-1">
-														<X className="size-3" /> No
-													</span>
-												)}
-											</div>
+					<div className="space-y-4 px-6 pt-6">
+						{attendance.map((a) => (
+							<div key={a.user_id} className="flex items-start gap-3">
+								<Avatar className="size-8 mt-0.5">
+									<AvatarImage src={a.avatar_url} />
+									<AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
+								</Avatar>
+								<div className="flex-1 space-y-1">
+									<div className="flex items-center justify-between">
+										<p className="text-sm font-medium leading-none">
+											{a.name}
+										</p>
+										<div className="flex items-center text-xs">
+											{a.status === "yes" && (
+												<span className="text-emerald-600 flex items-center gap-1">
+													<Check className="size-3" /> Yes
+												</span>
+											)}
+											{a.status === "maybe" && (
+												<span className="text-amber-600 flex items-center gap-1">
+													<HelpCircle className="size-3" /> Maybe
+												</span>
+											)}
+											{a.status === "no" && (
+												<span className="text-red-600 flex items-center gap-1">
+													<X className="size-3" /> No
+												</span>
+											)}
 										</div>
-										{a.note && (
-											<p className="text-sm text-muted-foreground bg-muted p-2 rounded-md mt-1">
-												{a.note}
-											</p>
-										)}
 									</div>
+									{a.note && (
+										<p className="text-sm text-muted-foreground bg-muted p-2 rounded-md mt-1">
+											{a.note}
+										</p>
+									)}
 								</div>
-							))}
-						</div>
-					</ScrollArea>
+							</div>
+						))}
+					</div>
 				) : (
 					<div className="py-8 text-center text-sm text-muted-foreground">
 						No RSVPs yet.
 					</div>
 				)}
-			</DialogContent>
-		</Dialog>
+			</SheetContent>
+		</Sheet>
 	);
 }
 
@@ -797,19 +625,12 @@ function AdminMeetingsView() {
 				cell: ({ row }) => {
 					const m = row.original;
 					return (
-						<div className="flex items-center gap-2 text-xs text-muted-foreground">
-							<span className="text-emerald-600 flex items-center gap-0.5">
-								<Check className="size-3" />
-								{m.yes_count}
-							</span>
-							<span className="text-amber-600 flex items-center gap-0.5">
-								<HelpCircle className="size-3" />
-								{m.maybe_count}
-							</span>
-							<span className="text-red-600 flex items-center gap-0.5">
-								<X className="size-3" />
-								{m.no_count}
-							</span>
+						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+							<span className="text-emerald-600">{m.yes_count}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-amber-600">{m.maybe_count}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-red-600">{m.no_count}</span>
 						</div>
 					);
 				},
@@ -928,6 +749,318 @@ function AdminMeetingsView() {
 	);
 }
 
+function UpcomingMeetingsView({
+	meetings,
+	onUpdate,
+}: {
+	meetings: Meeting[];
+	onUpdate: (id: number, status: Meeting["my_status"], note: string) => void;
+}) {
+	const [selectedMeetings, setSelectedMeetings] = useState<Meeting[]>([]);
+	const [bulkStatus, setBulkStatus] = useState<"yes" | "maybe" | "no" | null>(null);
+	const [saving, setSaving] = useState(false);
+
+	const handleBulkUpdate = async () => {
+		if (!bulkStatus || selectedMeetings.length === 0 || saving) return;
+		setSaving(true);
+		try {
+			await Promise.all(
+				selectedMeetings.map((m) => api.rsvp(m.id, bulkStatus, ""))
+			);
+			for (const m of selectedMeetings) {
+				onUpdate(m.id, bulkStatus, "");
+			}
+			setSelectedMeetings([]);
+			setBulkStatus(null);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const columns = useMemo<ColumnDef<Meeting, unknown>[]>(
+		() => [
+			{
+				accessorKey: "name",
+				header: "Name",
+				cell: ({ row }) => (
+					<div className="flex flex-col">
+						<span className="font-medium">{row.original.name}</span>
+						{row.original.description && (
+							<span className="text-xs text-muted-foreground truncate max-w-[200px]">
+								{row.original.description}
+							</span>
+						)}
+					</div>
+				),
+			},
+			{
+				id: "date",
+				header: "Date",
+				accessorFn: (row) => row.scheduled_at,
+				cell: ({ row }) => {
+					const m = row.original;
+					let timeStr = formatDate(m.scheduled_at);
+					if (m.end_time) {
+						const endDt = new Date(m.end_time * 1000);
+						timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+					}
+					return (
+						<span className="text-muted-foreground whitespace-nowrap">
+							{timeStr}
+						</span>
+					);
+				},
+			},
+			{
+				id: "rsvp",
+				header: "RSVP",
+				cell: ({ row }) => {
+					const m = row.original;
+					return (
+						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+							<span className="text-emerald-600">{m.yes_count || 0}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-amber-600">{m.maybe_count || 0}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-red-600">{m.no_count || 0}</span>
+						</div>
+					);
+				},
+			},
+			{
+				id: "my_status",
+				header: "My Status",
+				cell: ({ row }) => {
+					const m = row.original;
+					return (
+						<div className="flex items-center gap-2">
+							<div className="flex gap-1">
+								{(["yes", "maybe", "no"] as const).map((s) => {
+									const labels = { yes: "Going", maybe: "Maybe", no: "Can't go" };
+									return (
+										<Button
+											key={s}
+											size="sm"
+											variant={m.my_status === s ? "default" : "outline"}
+											className="h-6 px-2 text-[10px]"
+											onClick={async (e) => {
+												e.stopPropagation();
+												await api.rsvp(m.id, s, m.my_note ?? "");
+												onUpdate(m.id, s, m.my_note ?? "");
+											}}
+										>
+											{labels[s]}
+										</Button>
+									);
+								})}
+							</div>
+							{m.my_note && (
+								<span className="text-xs text-muted-foreground italic truncate max-w-[100px]" title={m.my_note}>
+									"{m.my_note}"
+								</span>
+							)}
+							<Popover>
+								<PopoverTrigger asChild>
+									<Button variant="ghost" size="icon-sm" className="h-6 w-6" onClick={(e) => e.stopPropagation()}>
+										<Pencil className="size-3" />
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
+									<div className="space-y-2">
+										<h4 className="text-xs font-medium">Note for {m.name}</h4>
+										<Textarea
+											id={`note-${m.id}`}
+											defaultValue={m.my_note ?? ""}
+											className="text-xs resize-none"
+											rows={2}
+											placeholder="Add a note..."
+										/>
+										<div className="flex justify-end">
+											<Button size="sm" onClick={async () => {
+												const val = (document.getElementById(`note-${m.id}`) as HTMLTextAreaElement).value;
+												await api.rsvp(m.id, m.my_status || "yes", val);
+												onUpdate(m.id, m.my_status || "yes", val);
+											}}>Save</Button>
+										</div>
+									</div>
+								</PopoverContent>
+							</Popover>
+						</div>
+					);
+				},
+			},
+		],
+		[onUpdate]
+	);
+
+	return (
+		<div className="space-y-4">
+			{selectedMeetings.length > 0 && (
+				<Card className="bg-muted/30 border-primary/20">
+					<CardContent className="p-3 flex items-center justify-between gap-4">
+						<span className="text-sm font-medium">
+							{selectedMeetings.length} meetings selected
+						</span>
+						<div className="flex items-center gap-2 flex-1 max-w-md">
+							<div className="flex gap-1 shrink-0">
+								{(["yes", "maybe", "no"] as const).map((s) => {
+									const labels = { yes: "Going", maybe: "Maybe", no: "Can't go" };
+									return (
+										<Button
+											key={s}
+											size="sm"
+											variant={bulkStatus === s ? "default" : "outline"}
+											className="h-8 text-xs"
+											onClick={() => setBulkStatus(s)}
+										>
+											{labels[s]}
+										</Button>
+									);
+								})}
+							</div>
+							<Button
+								size="sm"
+								onClick={handleBulkUpdate}
+								disabled={!bulkStatus || saving}
+								className="h-8 ml-auto"
+							>
+								{saving ? "Saving…" : "Apply"}
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+			<DataTable
+				columns={columns}
+				data={meetings}
+				filterPlaceholder="Filter upcoming meetings…"
+				enableRowSelection
+				onSelectionChange={setSelectedMeetings}
+			/>
+		</div>
+	);
+}
+
+function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
+	const [meetings, setMeetings] = useState<Meeting[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [viewAttendanceMeeting, setViewAttendanceMeeting] = useState<AdminMeeting | null>(null);
+
+	useEffect(() => {
+		api.getPastMeetings().then((data) => {
+			setMeetings(data);
+			setLoading(false);
+		});
+	}, []);
+
+	const columns = useMemo<ColumnDef<Meeting, unknown>[]>(
+		() => [
+			{
+				accessorKey: "name",
+				header: "Name",
+				cell: ({ row }) => (
+					<div className="flex flex-col">
+						<span className="font-medium">{row.original.name}</span>
+						{row.original.description && (
+							<span className="text-xs text-muted-foreground truncate max-w-[200px]">
+								{row.original.description}
+							</span>
+						)}
+					</div>
+				),
+			},
+			{
+				id: "date",
+				header: "Date",
+				accessorFn: (row) => row.scheduled_at,
+				cell: ({ row }) => {
+					const m = row.original;
+					let timeStr = formatDate(m.scheduled_at);
+					if (m.end_time) {
+						const endDt = new Date(m.end_time * 1000);
+						timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+					}
+					return (
+						<span className="text-muted-foreground whitespace-nowrap">
+							{timeStr}
+						</span>
+					);
+				},
+			},
+			{
+				id: "rsvp",
+				header: "RSVP",
+				cell: ({ row }) => {
+					const m = row.original;
+					return (
+						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+							<span className="text-emerald-600">{m.yes_count || 0}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-amber-600">{m.maybe_count || 0}</span>
+							<span className="mx-0.5">/</span>
+							<span className="text-red-600">{m.no_count || 0}</span>
+						</div>
+					);
+				},
+			},
+			{
+				id: "my_status",
+				header: "My Status & Note",
+				cell: ({ row }) => {
+					const m = row.original;
+					if (!m.my_status) return <span className="text-muted-foreground text-xs italic">Did not RSVP</span>;
+					
+					const labels = { yes: "Going", maybe: "Maybe", no: "Can't go" };
+					const colors = { 
+						yes: "text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/50", 
+						maybe: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50", 
+						no: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900/50" 
+					};
+					
+					return (
+						<div className="flex items-center gap-2">
+							<Badge variant="outline" className={`text-[10px] px-1.5 py-0 font-medium ${colors[m.my_status]}`}>
+								{labels[m.my_status]}
+							</Badge>
+							{m.my_note && (
+								<span className="text-xs text-muted-foreground italic truncate max-w-[150px]" title={m.my_note}>
+									"{m.my_note}"
+								</span>
+							)}
+						</div>
+					);
+				},
+			},
+		],
+		[]
+	);
+
+	if (loading) {
+		return <div className="text-sm text-muted-foreground py-8 text-center">Loading past meetings...</div>;
+	}
+
+	if (meetings.length === 0) {
+		return <p className="text-sm text-muted-foreground py-4">No past meetings.</p>;
+	}
+
+	return (
+		<div className="space-y-4">
+			<DataTable
+				columns={columns}
+				data={meetings}
+				filterPlaceholder="Filter past meetings…"
+				onRowClick={isAdmin ? (m) => setViewAttendanceMeeting(m as unknown as AdminMeeting) : undefined}
+			/>
+			{viewAttendanceMeeting && (
+				<MeetingAttendanceDialog
+					meeting={viewAttendanceMeeting}
+					onClose={() => setViewAttendanceMeeting(null)}
+				/>
+			)}
+		</div>
+	);
+}
+
 export function MeetingsPage({ session }: { session: Session }) {
 	const [meetings, setMeetings] = useState<Meeting[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -937,14 +1070,40 @@ export function MeetingsPage({ session }: { session: Session }) {
 			setMeetings(m);
 			setLoading(false);
 		});
-	}, []);
+	}, [session.is_admin]);
 
-	const updateRsvp = (id: number, status: Meeting["my_status"], note: string) =>
-		setMeetings((ms) =>
-			ms.map((m) =>
-				m.id === id ? { ...m, my_status: status, my_note: note } : m,
-			),
-		);
+	const updateRsvp = (id: number, status: Meeting["my_status"], note: string) => {
+		const updateList = (list: Meeting[]) => {
+			return list.map((m) => {
+				if (m.id === id) {
+					// We use m.my_status as the prevStatus to avoid stale closures
+					const prevStatus = m.my_status;
+					
+					// Optimistically update counts
+					let yes_count = m.yes_count;
+					let maybe_count = m.maybe_count;
+					let no_count = m.no_count;
+
+					if (prevStatus === "yes") yes_count = Math.max(0, yes_count - 1);
+					if (prevStatus === "maybe") maybe_count = Math.max(0, maybe_count - 1);
+					if (prevStatus === "no") no_count = Math.max(0, no_count - 1);
+
+					if (status === "yes") yes_count += 1;
+					if (status === "maybe") maybe_count += 1;
+					if (status === "no") no_count += 1;
+
+					return { ...m, my_status: status, my_note: note, yes_count, maybe_count, no_count };
+				}
+				return m;
+			});
+		};
+		setMeetings((ms) => updateList(ms));
+	};
+
+	const now = Math.floor(Date.now() / 1000);
+	const upcoming = meetings
+		.filter((m) => (m.end_time || m.scheduled_at) > now)
+		.sort((a, b) => a.scheduled_at - b.scheduled_at);
 
 	if (loading)
 		return (
@@ -954,6 +1113,20 @@ export function MeetingsPage({ session }: { session: Session }) {
 				</div>
 			</Layout>
 		);
+
+	const renderMeetingsList = () => (
+		<div className="space-y-8">
+			<div>
+				{upcoming.length === 0 ? (
+					<p className="text-sm text-muted-foreground">
+						No upcoming meetings.
+					</p>
+				) : (
+					<UpcomingMeetingsView meetings={upcoming} onUpdate={updateRsvp} />
+				)}
+			</div>
+		</div>
+	);
 
 	return (
 		<Layout session={session}>
@@ -965,40 +1138,24 @@ export function MeetingsPage({ session }: { session: Session }) {
 					</p>
 				</div>
 
-				{session.is_admin ? (
-					<Tabs defaultValue="upcoming">
-						<TabsList>
-							<TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-							<TabsTrigger value="manage">Manage</TabsTrigger>
-						</TabsList>
-						<TabsContent value="upcoming" className="mt-4">
-							{meetings.length === 0 ? (
-								<p className="text-sm text-muted-foreground py-4">
-									No upcoming meetings.
-								</p>
-							) : (
-								<div className="flex flex-col gap-3">
-									{meetings.map((m) => (
-										<RsvpCard key={m.id} meeting={m} onUpdate={updateRsvp} />
-									))}
-								</div>
-							)}
-						</TabsContent>
+				<Tabs defaultValue="upcoming">
+					<TabsList>
+						<TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+						<TabsTrigger value="past">Past</TabsTrigger>
+						{session.is_admin && <TabsTrigger value="manage">Manage</TabsTrigger>}
+					</TabsList>
+					<TabsContent value="upcoming" className="mt-4">
+						{renderMeetingsList()}
+					</TabsContent>
+					<TabsContent value="past" className="mt-4">
+						<PastMeetingsView isAdmin={session.is_admin} />
+					</TabsContent>
+					{session.is_admin && (
 						<TabsContent value="manage" className="mt-4">
 							<AdminMeetingsView />
 						</TabsContent>
-					</Tabs>
-				) : meetings.length === 0 ? (
-					<p className="text-sm text-muted-foreground py-4">
-						No upcoming meetings.
-					</p>
-				) : (
-					<div className="flex flex-col gap-3">
-						{meetings.map((m) => (
-							<RsvpCard key={m.id} meeting={m} onUpdate={updateRsvp} />
-						))}
-					</div>
-				)}
+					)}
+				</Tabs>
 			</div>
 		</Layout>
 	);

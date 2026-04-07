@@ -4,7 +4,10 @@ import type { Env } from "../index";
 import { isAdmin } from "../lib/admin";
 import { setProfile } from "../lib/users";
 
-const ROLE_FIELD_ID = "Xf040NQZR2F6";
+function getRoleFieldId(env: Env) {
+	return env.SLACK_PROFILE_FIELD_ROLE || "Xf040NQZR2F6";
+}
+
 const VALID_ROLES = ["student", "parent", "alumni", "mentor"] as const;
 type Role = (typeof VALID_ROLES)[number];
 
@@ -109,7 +112,7 @@ const roles = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 
 				for (const userId of userIds) {
 					await setProfile(adminClient, userId, {
-						[ROLE_FIELD_ID]: role.charAt(0).toUpperCase() + role.slice(1),
+						[getRoleFieldId(env)]: role.charAt(0).toUpperCase() + role.slice(1),
 					});
 					await env.DB.prepare(`
             INSERT INTO slack_user (user_id, role) VALUES (?, ?)

@@ -1,12 +1,16 @@
 import type { SlackAPIClient } from "slack-web-api-client";
+import type { Env } from "../index";
 import { setProfile } from "./users";
 
-export const CDT_FIELD_ID = "Xf040HCJKNJZ";
+export function getCdtFieldId(bindings: Env) {
+	return bindings.SLACK_PROFILE_FIELD_CDT || "Xf040HCJKNJZ";
+}
 
 export async function syncCdtUsers(
 	db: D1Database,
 	adminClient: SlackAPIClient,
 	cdtId: string,
+	bindings: Env,
 ) {
 	const cdtRow = await db
 		.prepare("SELECT name FROM cdt WHERE id = ?")
@@ -35,15 +39,18 @@ export async function syncCdtUsers(
 		});
 
 	for (const userId of memberIds) {
-		await setProfile(adminClient, userId, { [CDT_FIELD_ID]: cdtRow.name });
+		await setProfile(adminClient, userId, {
+			[getCdtFieldId(bindings)]: cdtRow.name,
+		});
 	}
 }
 
 export async function clearCdtProfile(
 	adminClient: SlackAPIClient,
 	userId: string,
+	bindings: Env,
 ) {
-	await setProfile(adminClient, userId, { [CDT_FIELD_ID]: "" });
+	await setProfile(adminClient, userId, { [getCdtFieldId(bindings)]: "" });
 }
 
 export async function sendWelcomeMessage(

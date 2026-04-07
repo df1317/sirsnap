@@ -450,10 +450,10 @@ export function createWebApp(_env: Env) {
 				await c.env.DB.prepare("DELETE FROM cdt_member WHERE user_id = ?")
 					.bind(id)
 					.run();
-				await clearCdtProfile(adminClient, id);
+				await clearCdtProfile(adminClient, id, c.env);
 
 				if (currentCdt) {
-					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id);
+					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
 				}
 			}
 		} else {
@@ -472,10 +472,10 @@ export function createWebApp(_env: Env) {
 					.run();
 
 				if (currentCdt && currentCdt.cdt_id !== cdt_id) {
-					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id);
+					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
 				}
 			}
-			await syncCdtUsers(c.env.DB, adminClient, cdt_id);
+			await syncCdtUsers(c.env.DB, adminClient, cdt_id, c.env);
 		}
 		return c.json({ ok: true });
 	});
@@ -528,7 +528,7 @@ export function createWebApp(_env: Env) {
 			await c.env.DB.prepare("DELETE FROM cdt_member WHERE user_id = ?")
 				.bind(userId)
 				.run();
-			await clearCdtProfile(adminClient, userId);
+			await clearCdtProfile(adminClient, userId, c.env);
 		} else {
 			await c.env.DB.prepare(
 				`INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?)
@@ -539,10 +539,10 @@ export function createWebApp(_env: Env) {
 		}
 
 		if (currentCdt && currentCdt.cdt_id !== cdt_id) {
-			await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id);
+			await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
 		}
 		if (cdt_id) {
-			await syncCdtUsers(c.env.DB, adminClient, cdt_id);
+			await syncCdtUsers(c.env.DB, adminClient, cdt_id, c.env);
 		}
 
 		return c.json({ ok: true });
@@ -707,7 +707,7 @@ export function createWebApp(_env: Env) {
 				)
 					.bind(userId, id)
 					.run();
-				await clearCdtProfile(adminClient, userId);
+				await clearCdtProfile(adminClient, userId, c.env);
 			}
 
 			for (const userId of added) {
@@ -725,11 +725,11 @@ export function createWebApp(_env: Env) {
 					.run();
 
 				if (currentCdt && currentCdt.cdt_id !== id) {
-					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id);
+					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
 				}
 			}
 
-			await syncCdtUsers(c.env.DB, adminClient, id);
+			await syncCdtUsers(c.env.DB, adminClient, id, c.env);
 		} else if (fields.length === 0) {
 			return c.json({ error: "No fields to update" }, 400);
 		}
@@ -758,7 +758,7 @@ export function createWebApp(_env: Env) {
 		await Promise.all([
 			deleteSlackUsergroup(adminClient, id, cdtRow.name, cdtRow.handle),
 			...members.results.map(({ user_id }) =>
-				clearCdtProfile(adminClient, user_id),
+				clearCdtProfile(adminClient, user_id, c.env),
 			),
 		]);
 

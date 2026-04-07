@@ -14,6 +14,8 @@ declare namespace Cloudflare {
 		SLACK_CLIENT_SECRET: string;
 		SLACK_BOT_TOKEN: string;
 		SLACK_ADMIN_TOKEN: string;
+		SLACK_PROFILE_FIELD_CDT?: string;
+		SLACK_PROFILE_FIELD_ROLE?: string;
 		NODE_ENV: string;
 		HOST: string;
 	}

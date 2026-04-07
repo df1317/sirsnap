@@ -1,7 +1,7 @@
 import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import { SlackAPIClient } from "slack-web-api-client";
 import type { Env } from "../index";
-import { CDT_FIELD_ID, deleteSlackUsergroup } from "../lib/slack-cdt";
+import { deleteSlackUsergroup, getCdtFieldId } from "../lib/slack-cdt";
 import { isAdmin, setProfile } from "../lib/users";
 
 function slugify(name: string): string {
@@ -266,7 +266,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		await Promise.all([
 			deleteSlackUsergroup(adminClient, cdtId, cdtRow.name, cdtRow.handle),
 			...members.results.map(({ user_id }) =>
-				setProfile(adminClient, user_id, { [CDT_FIELD_ID]: "" }),
+				setProfile(adminClient, user_id, { [getCdtFieldId(env)]: "" }),
 			),
 		]);
 
@@ -394,7 +394,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					)
 						.bind(userId, usergroupId)
 						.run();
-					await setProfile(adminClient, userId, { [CDT_FIELD_ID]: name });
+					await setProfile(adminClient, userId, { [getCdtFieldId(env)]: name });
 				}
 
 				if (members.length > 0) {
@@ -465,7 +465,9 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					)
 						.bind(userId, cdtId)
 						.run();
-					await setProfile(adminClient, userId, { [CDT_FIELD_ID]: newName });
+					await setProfile(adminClient, userId, {
+						[getCdtFieldId(env)]: newName,
+					});
 				}
 
 				for (const userId of removed) {
@@ -474,7 +476,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					)
 						.bind(userId, cdtId)
 						.run();
-					await setProfile(adminClient, userId, { [CDT_FIELD_ID]: "" });
+					await setProfile(adminClient, userId, { [getCdtFieldId(env)]: "" });
 				}
 
 				await adminClient.usergroups.users.update({

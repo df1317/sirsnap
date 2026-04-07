@@ -113,6 +113,28 @@ Deploy to Cloudflare Workers:
 bun deploy
 ```
 
+## Deployment for other FRC teams
+
+SirSnap can be deployed by any FRC team using Cloudflare Workers. 
+
+1. Create a Cloudflare account
+2. Initialize a D1 database: `bunx wrangler d1 create sirsnap`
+3. Update `wrangler.jsonc` with your new database ID
+4. Apply the schema: `bunx wrangler d1 execute sirsnap --local --file=schema.sql` and `bunx wrangler d1 execute sirsnap --remote --file=schema.sql`
+5. Configure your Slack App following the setup steps above
+6. Add your secrets:
+```bash
+bunx wrangler secret put SLACK_SIGNING_SECRET
+bunx wrangler secret put SLACK_BOT_TOKEN
+```
+7. Since custom profile fields (like Role and CDT) have unique IDs per workspace, you need to configure these for your team. Find the field IDs by calling `users.profile.get` for a user and inspecting the keys under `profile.fields` (they look like `Xf040HCJKNJZ`).
+8. Add these to your environment variables:
+```bash
+bunx wrangler secret put SLACK_PROFILE_FIELD_CDT
+bunx wrangler secret put SLACK_PROFILE_FIELD_ROLE
+```
+9. Deploy: `bun run deploy`
+
 ## Project Structure
 
 ```

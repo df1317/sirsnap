@@ -44,11 +44,35 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 	}, [attendanceDates]);
 
 	const getPunchStyle = (count: number) => {
-		if (count < 1) return { backgroundColor: "oklch(0.95 0.02 289.59)", width: "4px", height: "4px" };
-		if (count < 2) return { backgroundColor: "oklch(0.80 0.08 289.59)", width: "6px", height: "6px" };
-		if (count < 4) return { backgroundColor: "oklch(0.70 0.12 289.59)", width: "8px", height: "8px" };
-		if (count < 8) return { backgroundColor: "oklch(0.60 0.16 289.59)", width: "10px", height: "10px" };
-		return { backgroundColor: "oklch(0.50 0.20 289.59)", width: "12px", height: "12px" };
+		if (count < 1)
+			return {
+				backgroundColor: "oklch(0.95 0.02 289.59)",
+				width: "4px",
+				height: "4px",
+			};
+		if (count < 2)
+			return {
+				backgroundColor: "oklch(0.80 0.08 289.59)",
+				width: "6px",
+				height: "6px",
+			};
+		if (count < 4)
+			return {
+				backgroundColor: "oklch(0.70 0.12 289.59)",
+				width: "8px",
+				height: "8px",
+			};
+		if (count < 8)
+			return {
+				backgroundColor: "oklch(0.60 0.16 289.59)",
+				width: "10px",
+				height: "10px",
+			};
+		return {
+			backgroundColor: "oklch(0.50 0.20 289.59)",
+			width: "12px",
+			height: "12px",
+		};
 	};
 
 	const getDayName = (dayIndex: number) => {
@@ -65,11 +89,12 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 
 	// Calculate some cool stats
 	const stats = useMemo(() => {
-		if (attendanceDates.length === 0) return { streak: 0, busiestDay: "—", thisMonth: 0 };
+		if (attendanceDates.length === 0)
+			return { streak: 0, busiestDay: "—", thisMonth: 0 };
 
 		// Sort dates to calculate streak (ignoring time)
 		const sortedDays = [...attendanceDates]
-			.map(a => {
+			.map((a) => {
 				const d = new Date(a.scheduled_at * 1000);
 				return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 			})
@@ -80,7 +105,11 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 
 		let streak = 0;
 		const today = new Date();
-		const todayTime = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+		const todayTime = new Date(
+			today.getFullYear(),
+			today.getMonth(),
+			today.getDate(),
+		).getTime();
 		const yesterdayTime = todayTime - 86400000;
 
 		// Check if streak is active (attended today or yesterday)
@@ -115,7 +144,7 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 		// Calculate this month's attendance
 		const currentMonth = today.getMonth();
 		const currentYear = today.getFullYear();
-		const thisMonth = attendanceDates.filter(a => {
+		const thisMonth = attendanceDates.filter((a) => {
 			const d = new Date(a.scheduled_at * 1000);
 			return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
 		}).length;
@@ -123,8 +152,9 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 		return {
 			streak,
 			busiestDay: maxCount > 0 ? getDayName(maxDay) : "—",
-			thisMonth
+			thisMonth,
 		};
+		// biome-ignore lint/correctness/useExhaustiveDependencies: getDayName is stable but passed inline sometimes
 	}, [attendanceDates, getDayName]);
 
 	return (
@@ -136,19 +166,34 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 				<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
 					<span>Less</span>
 					<div className="flex size-3 items-center justify-center">
-						<div className="aspect-square rounded-full" style={getPunchStyle(0)} />
+						<div
+							className="aspect-square rounded-full"
+							style={getPunchStyle(0)}
+						/>
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div className="aspect-square rounded-full" style={getPunchStyle(1)} />
+						<div
+							className="aspect-square rounded-full"
+							style={getPunchStyle(1)}
+						/>
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div className="aspect-square rounded-full" style={getPunchStyle(2)} />
+						<div
+							className="aspect-square rounded-full"
+							style={getPunchStyle(2)}
+						/>
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div className="aspect-square rounded-full" style={getPunchStyle(4)} />
+						<div
+							className="aspect-square rounded-full"
+							style={getPunchStyle(4)}
+						/>
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div className="aspect-square rounded-full" style={getPunchStyle(8)} />
+						<div
+							className="aspect-square rounded-full"
+							style={getPunchStyle(8)}
+						/>
 					</div>
 					<span>More</span>
 				</div>
@@ -156,9 +201,11 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 
 			<div className="flex flex-col gap-8 lg:flex-row">
 				<div className="flex flex-1 flex-col gap-4 overflow-hidden">
-					<div 
+					<div
 						className="grid gap-1"
-						style={{ gridTemplateColumns: "repeat(auto-fill, minmax(12px, 1fr))" }}
+						style={{
+							gridTemplateColumns: "repeat(auto-fill, minmax(12px, 1fr))",
+						}}
 					>
 						{Array.from({ length: 364 }).map((_, i) => {
 							const weekIndex = Math.floor(i / 7);
@@ -200,14 +247,12 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 								{stats.thisMonth}
 							</div>
 						</div>
-						
+
 						<div className="space-y-1">
 							<span className="block font-medium text-muted-foreground text-xs uppercase tracking-wider">
 								Busiest Day
 							</span>
-							<div className="font-medium text-lg">
-								{stats.busiestDay}
-							</div>
+							<div className="font-medium text-lg">{stats.busiestDay}</div>
 						</div>
 					</div>
 				</div>

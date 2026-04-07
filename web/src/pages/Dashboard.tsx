@@ -203,7 +203,7 @@ function CdtList({ cdts, users }: { cdts: Cdt[]; users: User[] }) {
 			)}
 			{sorted.map(({ cdt, members }, ci) => (
 				<div key={cdt.id}>
-					<div className="bg-muted/30 px-4 py-2">
+					<div className="bg-muted/30 px-4 py-2 flex items-center justify-between">
 						<p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-widest">
 							{cdt.name} · {members.length}
 						</p>
@@ -218,15 +218,28 @@ function CdtList({ cdts, users }: { cdts: Cdt[]; users: User[] }) {
 								<div className="min-w-0 flex-1">
 									<p className="truncate font-medium text-sm">{u.name}</p>
 								</div>
-								{u.role ? (
-									<Badge variant={roleVariant[u.role]} className="text-[10px]">
-										{u.role.charAt(0).toUpperCase() + u.role.slice(1)}
-									</Badge>
-								) : (
-									<span className="shrink-0 text-muted-foreground text-xs">
-										—
-									</span>
-								)}
+								<div className="flex items-center gap-3">
+									{u.meetings_attended !== undefined && (
+										<span
+											className="text-muted-foreground text-xs"
+											title="Meetings Attended"
+										>
+											{u.meetings_attended}
+										</span>
+									)}
+									{u.role ? (
+										<Badge
+											variant={roleVariant[u.role]}
+											className="text-[10px] w-[60px] justify-center"
+										>
+											{u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+										</Badge>
+									) : (
+										<span className="shrink-0 text-muted-foreground text-xs w-[60px] text-center">
+											—
+										</span>
+									)}
+								</div>
 							</div>
 							{(i < members.length - 1 || ci < sorted.length - 1) && (
 								<Separator />
@@ -311,39 +324,47 @@ export function Dashboard({ session }: { session: Session }) {
 	const [users, setUsers] = useState<User[]>([]);
 	const [cdts, setCdts] = useState<Cdt[]>([]);
 	const [meetings, setMeetings] = useState<Meeting[]>([]);
+	const [pastMeetings, setPastMeetings] = useState<Meeting[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		const cachedUsers = sessionStorage.getItem("users_cache");
 		const cachedCdts = sessionStorage.getItem("cdts_cache");
 		const cachedMeetings = sessionStorage.getItem("meetings_cache");
+		const cachedPastMeetings = sessionStorage.getItem("past_meetings_cache");
 
-		if (cachedUsers && cachedCdts && cachedMeetings) {
+		if (cachedUsers && cachedCdts && cachedMeetings && cachedPastMeetings) {
 			setUsers(JSON.parse(cachedUsers));
 			setCdts(JSON.parse(cachedCdts));
 			setMeetings(JSON.parse(cachedMeetings));
+			setPastMeetings(JSON.parse(cachedPastMeetings));
 			setLoading(false);
 		}
 
-		Promise.all([api.getUsers(), api.getCdts(), api.getMeetings()]).then(
-			([u, c, m]) => {
-				setUsers(u);
-				setCdts(c);
-				setMeetings(m);
-				sessionStorage.setItem("users_cache", JSON.stringify(u));
-				sessionStorage.setItem("cdts_cache", JSON.stringify(c));
-				sessionStorage.setItem("meetings_cache", JSON.stringify(m));
-				setLoading(false);
-			},
-		);
+		Promise.all([
+			api.getUsers(),
+			api.getCdts(),
+			api.getMeetings(),
+			api.getPastMeetings(4, 0), // Fetch a small number of recent past meetings
+		]).then(([u, c, m, pm]) => {
+			setUsers(u);
+			setCdts(c);
+			setMeetings(m);
+			setPastMeetings(pm);
+			sessionStorage.setItem("users_cache", JSON.stringify(u));
+			sessionStorage.setItem("cdts_cache", JSON.stringify(c));
+			sessionStorage.setItem("meetings_cache", JSON.stringify(m));
+			sessionStorage.setItem("past_meetings_cache", JSON.stringify(pm));
+			setLoading(false);
+		});
 	}, []);
 
 	if (loading)
 		return (
 			<Layout session={session}>
 				<div className="animate-pulse space-y-6">
-					<div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px]">
-						<div className="space-y-3">
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+						<div className="space-y-6">
 							<div className="h-4 w-24 rounded bg-muted"></div>
 							<Card>
 								<CardContent className="pt-5 pb-5">
@@ -429,7 +450,7 @@ export function Dashboard({ session }: { session: Session }) {
 	return (
 		<Layout session={session}>
 			<div className="space-y-6">
-				<div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px]">
+				<div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
 					<div className="space-y-6">
 						<div className="space-y-3">
 							<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
@@ -453,29 +474,98 @@ export function Dashboard({ session }: { session: Session }) {
 								</Card>
 							)}
 						</div>
-						
+
 						<div className="space-y-3">
 							<PunchCard />
 						</div>
 					</div>
 
-					<div className="space-y-3">
-						<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
-							My CDT
-						</h2>
-						<CdtList
-							cdts={cdts.filter(
-								(c) =>
-									users.find((u) => u.user_id === session.user_id)?.cdt_id ===
-									c.id,
-							)}
-							users={users.filter(
-								(u) =>
-									u.cdt_id ===
-									users.find((user) => user.user_id === session.user_id)
-										?.cdt_id,
-							)}
-						/>
+					<div className="flex flex-col gap-6 lg:col-start-2">
+						<div className="space-y-3">
+							<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
+								My CDT
+							</h2>
+							<CdtList
+								cdts={cdts.filter(
+									(c) =>
+										users.find((u) => u.user_id === session.user_id)?.cdt_id ===
+										c.id,
+								)}
+								users={users.filter(
+									(u) =>
+										u.cdt_id ===
+										users.find((user) => user.user_id === session.user_id)
+											?.cdt_id,
+								)}
+							/>
+						</div>
+
+						{pastMeetings.length > 0 && (
+							<div className="space-y-3 flex-1">
+								<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
+									Recent Meetings
+								</h2>
+								<Card className="overflow-hidden py-0">
+									{pastMeetings.map((m, i) => {
+										const d = new Date(m.scheduled_at * 1000);
+										const month = d
+											.toLocaleDateString("en-US", { month: "short" })
+											.toUpperCase();
+										const day = d.getDate();
+
+										return (
+											<div key={m.id}>
+												<Link
+													to="/meetings"
+													className="block transition-colors hover:bg-muted/30"
+												>
+													<div className="flex items-center gap-3 px-4 py-2">
+														<div className="flex w-10 shrink-0 flex-col items-center justify-start">
+															<span className="font-semibold text-[9px] text-primary uppercase tracking-widest">
+																{month}
+															</span>
+															<span className="font-bold text-foreground text-lg leading-tight">
+																{day}
+															</span>
+														</div>
+														<div className="min-w-0 flex-1">
+															<p className="truncate font-medium text-sm">
+																{m.name}
+															</p>
+															<p className="text-muted-foreground text-xs">
+																{d.toLocaleTimeString("en-US", {
+																	hour: "numeric",
+																	minute: "2-digit",
+																})}
+															</p>
+														</div>
+														{m.my_status && (
+															<Badge
+																variant={
+																	m.my_status === "yes"
+																		? "outline"
+																		: m.my_status === "maybe"
+																			? "secondary"
+																			: "destructive"
+																}
+																className="text-[10px]"
+															>
+																{m.my_status === "yes"
+																	? "Going"
+																	: m.my_status === "maybe"
+																		? "Maybe"
+																		: "Can't go"}
+															</Badge>
+														)}
+													</div>
+												</Link>
+												{i < pastMeetings.length - 1 && <Separator />}
+											</div>
+										);
+									})}
+								</Card>
+							</div>
+						)}
 					</div>
 				</div>
 

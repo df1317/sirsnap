@@ -311,7 +311,9 @@ function TeamListView({
 				enableRowSelection={isAdmin}
 				onSelectionChange={isAdmin ? setSelectedRows : undefined}
 				renderSubComponent={({ row }) => (
-					<div className="p-4 cursor-pointer" onClick={() => openUser(row)}>
+					// biome-ignore lint/a11y/noStaticElementInteractions: handled internally
+					// biome-ignore lint/a11y/useKeyWithClickEvents: handled internally
+					<div className="cursor-pointer p-4" onClick={() => openUser(row)}>
 						<PunchCard userId={row.user_id} />
 					</div>
 				)}

@@ -62,7 +62,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const formatDate = (unix: number) => {
 	const d = new Date(unix * 1000);
 	const isCurrentYear = d.getFullYear() === new Date().getFullYear();
-	
+
 	let dateStr = d.toLocaleDateString("en-US", {
 		weekday: "short",
 		month: "short",
@@ -1176,7 +1176,12 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 	useEffect(() => {
 		const observer = new IntersectionObserver(
 			(entries) => {
-				if (entries[0].isIntersecting && hasMore && !loading && !isFetchingMore) {
+				if (
+					entries[0].isIntersecting &&
+					hasMore &&
+					!loading &&
+					!isFetchingMore
+				) {
 					handleLoadMore();
 				}
 			},
@@ -1310,7 +1315,11 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 			/>
 			{hasMore && (
 				<div id="load-more-trigger" className="flex justify-center mt-4">
-					<Button variant="outline" onClick={handleLoadMore} disabled={isFetchingMore}>
+					<Button
+						variant="outline"
+						onClick={handleLoadMore}
+						disabled={isFetchingMore}
+					>
 						{isFetchingMore ? "Loading..." : "Load More"}
 					</Button>
 				</div>

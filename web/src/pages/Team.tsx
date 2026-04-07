@@ -2,6 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useState } from "react";
 import { DataTable } from "../components/data-table";
 import { Layout } from "../components/Layout";
+import { PunchCard } from "../components/PunchCard";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -236,10 +237,7 @@ function TeamListView({
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-center justify-between">
-				<span className="text-muted-foreground text-xs">
-					{users.length} members
-				</span>
+			<div className="flex items-center justify-end">
 				{isAdmin && (
 					<div className="flex items-center gap-2">
 						{syncDone && (
@@ -326,9 +324,13 @@ function TeamListView({
 				columns={columns}
 				data={users}
 				filterPlaceholder="Filter members…"
-				onRowClick={openUser}
 				enableRowSelection={isAdmin}
 				onSelectionChange={isAdmin ? setSelectedRows : undefined}
+				renderSubComponent={({ row }) => (
+					<div className="p-4">
+						<PunchCard user={row} />
+					</div>
+				)}
 			/>
 
 			<Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

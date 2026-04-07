@@ -36,11 +36,11 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 
 	try {
 		// Load previously saved mappings
-		const savedMappingsStr = await c.env.DB.prepare(
+		const savedMappingsStr = (await c.env.DB.prepare(
 			"SELECT value FROM kv_store WHERE key = 'teamsnap_mappings'",
-		).first("value") as string;
+		).first("value")) as string;
 		const savedMappings = savedMappingsStr ? JSON.parse(savedMappingsStr) : {};
-		
+
 		// Merge saved mappings with any new ones from the UI
 		const effectiveMappings = { ...savedMappings, ...manualMappings };
 
@@ -107,7 +107,10 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			const tsName = `${firstName} ${lastName}`.trim();
 
 			// First check manual mappings
-			if (effectiveMappings[member.id] && effectiveMappings[member.id] !== "ignore") {
+			if (
+				effectiveMappings[member.id] &&
+				effectiveMappings[member.id] !== "ignore"
+			) {
 				tsToSlackUserMap.set(member.id, effectiveMappings[member.id]);
 				matchedMembers.push({
 					id: member.id,
@@ -274,13 +277,15 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 
 		// Save manual mappings
 		if (Object.keys(manualMappings).length > 0) {
-			const existingMappingsStr = await c.env.DB.prepare(
+			const existingMappingsStr = (await c.env.DB.prepare(
 				"SELECT value FROM kv_store WHERE key = 'teamsnap_mappings'",
-			).first("value") as string;
-			
-			const existingMappings = existingMappingsStr ? JSON.parse(existingMappingsStr) : {};
+			).first("value")) as string;
+
+			const existingMappings = existingMappingsStr
+				? JSON.parse(existingMappingsStr)
+				: {};
 			const mergedMappings = { ...existingMappings, ...manualMappings };
-			
+
 			await c.env.DB.prepare(
 				"INSERT INTO kv_store (key, value) VALUES ('teamsnap_mappings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
 			)

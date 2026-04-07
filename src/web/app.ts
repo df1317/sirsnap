@@ -146,10 +146,28 @@ export function createWebApp(_env: Env) {
 		});
 	});
 
+	api.get("/me/punchcard", requireSession(), async (c) => {
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
+		const session = c.get("session")!;
+		const now = Math.floor(Date.now() / 1000);
+
+		const rows = await c.env.DB.prepare(
+			`SELECT m.scheduled_at
+       FROM attendance a
+       JOIN meeting m ON m.id = a.meeting_id
+       WHERE a.user_id = ? AND a.status = 'yes' AND m.scheduled_at < ? AND m.cancelled = 0`,
+		)
+			.bind(session.user_id, now)
+			.all<{ scheduled_at: number }>();
+
+		return c.json(rows.results);
+	});
+
 	api.get("/users", requireSession(), async (c) => {
 		const rows = await c.env.DB.prepare(
 			`SELECT u.user_id, u.name, u.avatar_url, u.role, u.is_admin,
-              cm.cdt_id, cdt.name AS cdt_name
+              cm.cdt_id, cdt.name AS cdt_name,
+              (SELECT COUNT(*) FROM attendance a WHERE a.user_id = u.user_id AND a.status = 'yes') AS meetings_attended
        FROM slack_user u
        LEFT JOIN cdt_member cm ON cm.user_id = u.user_id
        LEFT JOIN cdt ON cdt.id = cm.cdt_id
@@ -162,6 +180,7 @@ export function createWebApp(_env: Env) {
 			is_admin: number;
 			cdt_id: string | null;
 			cdt_name: string | null;
+			meetings_attended: number;
 		}>();
 
 		c.header("Cache-Control", "no-store, max-age=0");
@@ -369,6 +388,22 @@ export function createWebApp(_env: Env) {
 		]);
 
 		return c.json({ ok: true });
+	});
+
+	api.get("/users/:userId/punchcard", requireSession(), async (c) => {
+		const userId = c.req.param("userId");
+		const now = Math.floor(Date.now() / 1000);
+
+		const rows = await c.env.DB.prepare(
+			`SELECT m.scheduled_at
+       FROM attendance a
+       JOIN meeting m ON m.id = a.meeting_id
+       WHERE a.user_id = ? AND a.status = 'yes' AND m.scheduled_at < ? AND m.cancelled = 0`,
+		)
+			.bind(userId, now)
+			.all<{ scheduled_at: number }>();
+
+		return c.json(rows.results);
 	});
 
 	// Admin API

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Layout } from "../components/Layout";
+import { PunchCard } from "../components/PunchCard";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -429,27 +430,33 @@ export function Dashboard({ session }: { session: Session }) {
 		<Layout session={session}>
 			<div className="space-y-6">
 				<div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px]">
-					<div className="space-y-3">
-						<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
-							Next Meeting
-						</h2>
-						{featured ? (
-							<FeaturedMeeting meeting={featured} onUpdate={updateRsvp} />
-						) : (
-							<Card>
-								<CardContent className="py-8 text-center">
-									<p className="text-muted-foreground text-sm">
-										No upcoming meetings.
-									</p>
-									<Link
-										to="/meetings"
-										className="mt-1 inline-block text-primary text-sm hover:underline"
-									>
-										View all meetings
-									</Link>
-								</CardContent>
-							</Card>
-						)}
+					<div className="space-y-6">
+						<div className="space-y-3">
+							<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
+								Next Meeting
+							</h2>
+							{featured ? (
+								<FeaturedMeeting meeting={featured} onUpdate={updateRsvp} />
+							) : (
+								<Card>
+									<CardContent className="py-8 text-center">
+										<p className="text-muted-foreground text-sm">
+											No upcoming meetings.
+										</p>
+										<Link
+											to="/meetings"
+											className="mt-1 inline-block text-primary text-sm hover:underline"
+										>
+											View all meetings
+										</Link>
+									</CardContent>
+								</Card>
+							)}
+						</div>
+						
+						<div className="space-y-3">
+							<PunchCard />
+						</div>
 					</div>
 
 					<div className="space-y-3">

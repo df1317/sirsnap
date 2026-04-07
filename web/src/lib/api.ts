@@ -113,6 +113,13 @@ export const api = {
 		if (!r.ok) throw new Error("Not authenticated");
 		return r.json();
 	},
+	async getPunchcard(userId?: string): Promise<{ scheduled_at: number }[]> {
+		return (
+			await apiFetch(
+				userId ? `/api/users/${userId}/punchcard` : "/api/me/punchcard",
+			)
+		).json();
+	},
 	async getUsers(): Promise<User[]> {
 		return (await apiFetch("/api/users")).json();
 	},

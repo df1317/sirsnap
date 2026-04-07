@@ -16,15 +16,15 @@ auth.get("/login", (c) => {
 	return c.redirect(buildOAuthUrl(c.env, state));
 });
 
-auth.get("/oauth/callback", async (c) => {
+auth.get("/callback", async (c) => {
 	const { code, state, error } = c.req.query();
 
-	if (error) return c.redirect(`/login?error=${encodeURIComponent(error)}`);
+	if (error) return c.redirect(`/api/auth/login?error=${encodeURIComponent(error)}`);
 
 	const savedState = getCookie(c, "oauth_state");
 	deleteCookie(c, "oauth_state");
 	if (!savedState || savedState !== state)
-		return c.redirect("/login?error=invalid_state");
+		return c.redirect("/api/auth/login?error=invalid_state");
 
 	try {
 		const { userId, name, avatarUrl } = await exchangeCode(c.env, code);
@@ -59,7 +59,7 @@ auth.get("/oauth/callback", async (c) => {
 		return c.redirect("/");
 	} catch (err) {
 		console.error("OAuth callback error:", err);
-		return c.redirect("/login?error=server_error");
+		return c.redirect("/api/auth/login?error=server_error");
 	}
 });
 
@@ -70,7 +70,7 @@ auth.post("/logout", async (c) => {
 			.bind(token)
 			.run();
 	deleteCookie(c, "session");
-	return c.redirect("/login");
+	return c.redirect("/api/auth/login");
 });
 
 export default auth;

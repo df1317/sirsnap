@@ -113,7 +113,9 @@ export function DataTable<TData, TValue>({
 				/>
 				{enableRowSelection ? (
 					<span className="text-muted-foreground text-xs">
-						{selectedCount > 0 ? `${selectedCount} of ${totalCount} selected` : `${totalCount} ${noun}`}
+						{selectedCount > 0
+							? `${selectedCount} of ${totalCount} selected`
+							: `${totalCount} ${noun}`}
 					</span>
 				) : (
 					<span className="text-muted-foreground text-xs">

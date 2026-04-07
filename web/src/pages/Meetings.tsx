@@ -149,7 +149,7 @@ function CreateMeetingDialog({
 		try {
 			const [hours, minutes] = time.split(":").map(Number);
 			const dt = new Date(date);
-			dt.setUTCHours(hours, minutes, 0, 0);
+			dt.setHours(hours, minutes, 0, 0);
 			const scheduledAt = toUnix(dt);
 
 			let durationMinutes: number | undefined;
@@ -157,7 +157,7 @@ function CreateMeetingDialog({
 			if (endTime) {
 				const [endHours, endMinutes] = endTime.split(":").map(Number);
 				const endDt = new Date(date);
-				endDt.setUTCHours(endHours, endMinutes, 0, 0);
+				endDt.setHours(endHours, endMinutes, 0, 0);
 				// Handle overnight meetings
 				if (endDt < dt) {
 					endDt.setDate(endDt.getDate() + 1);
@@ -169,7 +169,7 @@ function CreateMeetingDialog({
 			if (isRecurring && selectedDays.length > 0 && endDate) {
 				const timeOfDayMinutes = hours * 60 + minutes;
 				const endSeriesDt = new Date(endDate);
-				endSeriesDt.setUTCHours(23, 59, 59, 0);
+				endSeriesDt.setHours(23, 59, 59, 0);
 				const endSeriesUnix = toUnix(endSeriesDt);
 				const created = await api.createMeetingSeries({
 					name: name.trim(),
@@ -388,14 +388,14 @@ function EditMeetingDialog({
 	let initialEndTimeStr = "";
 	if (meeting.end_time) {
 		const endDt = fromUnix(meeting.end_time);
-		initialEndTimeStr = `${String(endDt.getUTCHours()).padStart(2, "0")}:${String(endDt.getUTCMinutes()).padStart(2, "0")}`;
+		initialEndTimeStr = `${String(endDt.getHours()).padStart(2, "0")}:${String(endDt.getMinutes()).padStart(2, "0")}`;
 	}
 
 	const [name, setName] = useState(meeting.name);
 	const [desc, setDesc] = useState(meeting.description ?? "");
 	const [date, setDate] = useState<Date>(initial);
 	const [time, setTime] = useState(
-		`${String(initial.getUTCHours()).padStart(2, "0")}:${String(initial.getUTCMinutes()).padStart(2, "0")}`,
+		`${String(initial.getHours()).padStart(2, "0")}:${String(initial.getMinutes()).padStart(2, "0")}`,
 	);
 	const [endTime, setEndTime] = useState(initialEndTimeStr);
 	const [saving, setSaving] = useState(false);
@@ -408,13 +408,13 @@ function EditMeetingDialog({
 			if (date && time) {
 				const [hours, minutes] = time.split(":").map(Number);
 				const dt = new Date(date);
-				dt.setUTCHours(hours, minutes, 0, 0);
+				dt.setHours(hours, minutes, 0, 0);
 				scheduledAt = toUnix(dt);
-				
+
 				if (endTime) {
 					const [endHours, endMinutes] = endTime.split(":").map(Number);
 					const endDt = new Date(date);
-					endDt.setUTCHours(endHours, endMinutes, 0, 0);
+					endDt.setHours(endHours, endMinutes, 0, 0);
 					if (endDt < dt) endDt.setDate(endDt.getDate() + 1);
 					endUnix = toUnix(endDt);
 				}
@@ -644,20 +644,20 @@ function AdminMeetingsView() {
 
 			await Promise.all(
 				selectedMeetings.map((m) => {
-					const endUnix = m.scheduled_at + (durationMinutes * 60);
+					const endUnix = m.scheduled_at + durationMinutes * 60;
 					return api.updateMeeting(m.id, {
 						end_time: endUnix,
 					});
-				})
+				}),
 			);
 
 			setMeetings((prev) =>
 				prev.map((m) => {
 					if (selectedMeetings.some((sm) => sm.id === m.id)) {
-						return { ...m, end_time: m.scheduled_at + (durationMinutes * 60) };
+						return { ...m, end_time: m.scheduled_at + durationMinutes * 60 };
 					}
 					return m;
-				})
+				}),
 			);
 			setSelectedMeetings([]);
 		} finally {
@@ -810,7 +810,11 @@ function AdminMeetingsView() {
 						</div>
 						<div className="flex items-center gap-2">
 							<div className="flex items-center gap-1.5 rounded-md border p-1">
-								<Select value={bulkDuration} onChange={(e) => setBulkDuration(e.target.value)} className="h-7 border-none text-xs w-28 bg-transparent focus:ring-0">
+								<Select
+									value={bulkDuration}
+									onChange={(e) => setBulkDuration(e.target.value)}
+									className="h-7 border-none text-xs w-28 bg-transparent focus:ring-0"
+								>
 									<option value="30">30 min</option>
 									<option value="45">45 min</option>
 									<option value="60">1 hour</option>
@@ -821,7 +825,13 @@ function AdminMeetingsView() {
 									<option value="300">5 hours</option>
 									<option value="360">6 hours</option>
 								</Select>
-								<Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleBulkDurationUpdate} disabled={savingBulk}>
+								<Button
+									size="sm"
+									variant="secondary"
+									className="h-7 text-xs"
+									onClick={handleBulkDurationUpdate}
+									disabled={savingBulk}
+								>
 									{savingBulk ? "Applying…" : "Set Duration"}
 								</Button>
 							</div>
@@ -842,7 +852,8 @@ function AdminMeetingsView() {
 					</CardContent>
 				</Card>
 			)}
-			<DataTable noun="meetings"
+			<DataTable
+				noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter meetings…"
@@ -1095,7 +1106,8 @@ function UpcomingMeetingsView({
 					</CardContent>
 				</Card>
 			)}
-			<DataTable noun="meetings"
+			<DataTable
+				noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter upcoming meetings…"
@@ -1229,7 +1241,8 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 
 	return (
 		<div className="space-y-4">
-			<DataTable noun="meetings"
+			<DataTable
+				noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter past meetings…"

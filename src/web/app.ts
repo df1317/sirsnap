@@ -729,8 +729,10 @@ export function createWebApp(_env: Env) {
 
 		if (meeting) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
-			await updateAnnouncement(botClient, c.env.DB, meeting).catch((err) =>
-				console.error("cancel announcement update failed:", err),
+			c.executionCtx.waitUntil(
+				updateAnnouncement(botClient, c.env.DB, meeting).catch((err) =>
+					console.error("cancel announcement update failed:", err),
+				),
 			);
 		}
 
@@ -851,7 +853,23 @@ export function createWebApp(_env: Env) {
 
 	api.delete("/admin/meetings/:id", requireAdmin(), async (c) => {
 		const id = Number(c.req.param("id"));
+		const meeting = await c.env.DB.prepare(
+			"SELECT id, channel_id, message_ts FROM meeting WHERE id = ?",
+		)
+			.bind(id)
+			.first<{ id: number; channel_id: string; message_ts: string }>();
+
 		await c.env.DB.prepare("DELETE FROM meeting WHERE id = ?").bind(id).run();
+
+		if (meeting?.message_ts && meeting?.channel_id) {
+			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
+			c.executionCtx.waitUntil(
+				botClient.chat
+					.delete({ channel: meeting.channel_id, ts: meeting.message_ts })
+					.catch(() => {}),
+			);
+		}
+
 		return c.json({ ok: true });
 	});
 

@@ -102,10 +102,10 @@ export function createWebApp(_env: Env) {
               (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
        FROM meeting m
        LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE (m.scheduled_at > ? OR (m.end_time IS NOT NULL AND m.end_time > ?)) AND m.cancelled = 0
+       WHERE (m.scheduled_at > ? OR (m.end_time IS NOT NULL AND m.end_time > ?) OR (m.end_time IS NULL AND m.scheduled_at <= ? AND m.scheduled_at + (3 * 60 * 60) > ?)) AND m.cancelled = 0
        ORDER BY m.scheduled_at`,
 		)
-			.bind(session.user_id, now, now)
+			.bind(session.user_id, now, now, now, now)
 			.all();
 
 		// The SQLite query returns yes_count/maybe_count/no_count as BigInts or numbers.
@@ -131,7 +131,7 @@ export function createWebApp(_env: Env) {
               (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
        FROM meeting m
        LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE (m.scheduled_at <= ? AND (m.end_time IS NULL OR m.end_time <= ?)) AND m.cancelled = 0
+       WHERE (m.end_time IS NOT NULL AND m.end_time <= ?) OR (m.end_time IS NULL AND m.scheduled_at + (3 * 60 * 60) <= ?) AND m.cancelled = 0
        ORDER BY m.scheduled_at DESC LIMIT 20`,
 		)
 			.bind(session.user_id, now, now)
@@ -540,7 +540,8 @@ export function createWebApp(_env: Env) {
          COALESCE(SUM(CASE WHEN a.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
          COALESCE(SUM(CASE WHEN a.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count
        FROM meeting m LEFT JOIN attendance a ON a.meeting_id = m.id
-       GROUP BY m.id ORDER BY m.scheduled_at DESC LIMIT 100`,
+       WHERE (m.end_time IS NOT NULL AND m.end_time > strftime('%s', 'now')) OR (m.end_time IS NULL AND m.scheduled_at + (3 * 60 * 60) > strftime('%s', 'now')) OR m.scheduled_at > strftime('%s', 'now')
+       GROUP BY m.id ORDER BY m.scheduled_at ASC LIMIT 100`,
 		).all<{
 			id: number;
 			name: string;
@@ -851,6 +852,159 @@ export function createWebApp(_env: Env) {
 		);
 	});
 
+	api.post("/admin/meetings/import-ics", requireAdmin(), async (c) => {
+		const body = await c.req.json<{
+			url: string;
+			channel_id?: string;
+		}>();
+
+		if (!body.url) return c.json({ error: "Missing url" }, 400);
+
+		let channel_id = body.channel_id;
+		if (!channel_id) {
+			const setting = await c.env.DB.prepare(
+				"SELECT value FROM kv_store WHERE key = ?",
+			)
+				.bind("default_channel")
+				.first<{ value: string }>();
+			if (setting?.value) {
+				channel_id = setting.value;
+			}
+		}
+
+		try {
+			const res = await fetch(body.url);
+			if (!res.ok) {
+				return c.json(
+					{ error: `Failed to fetch ICS: ${res.status} ${res.statusText}` },
+					400,
+				);
+			}
+			const icsData = await res.text();
+
+			// We use dynamic import for node-ical so it doesn't break cloudflare worker startup if there are issues
+			const ical = await import("node-ical");
+			const events = await ical.async.parseICS(icsData);
+
+			const created: {
+				id: number;
+				name: string;
+				scheduled_at: number;
+				end_time: number | null;
+				cancelled: boolean;
+			}[] = [];
+
+			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
+			const now = Math.floor(Date.now() / 1000);
+			const twoWeeksInSeconds = 14 * 24 * 60 * 60;
+
+			if (body.channel_id) {
+				try {
+					await botClient.conversations.join({ channel: body.channel_id });
+				} catch {}
+			}
+
+			// Create a series for the imported calendar
+			const seriesResult = await c.env.DB.prepare(
+				"INSERT INTO meeting_series (name, description, days_of_week, time_of_day, end_date) VALUES (?, ?, '[]', 0, 0)",
+			)
+				.bind(`ICS Import: ${new Date().toLocaleDateString()}`, "")
+				.run();
+			const seriesId = seriesResult.meta.last_row_id as number;
+
+			for (const event of Object.values(events)) {
+				if (event.type !== "VEVENT") continue;
+
+				const start = new Date(event.start);
+				const scheduled_at = Math.floor(start.getTime() / 1000);
+
+				// Skip old events
+				if (scheduled_at < now - 24 * 60 * 60) continue;
+
+				let end_time = null;
+				if (event.end) {
+					end_time = Math.floor(new Date(event.end).getTime() / 1000);
+				}
+
+				const name = event.summary || "Imported Meeting";
+				const description = event.description || "";
+				const isCancelled =
+					name.toLowerCase().includes("[canceled]") ||
+					name.toLowerCase().includes("[cancelled]");
+				const cleanName = name
+					.replace(/\[CANCELED\]\s*/i, "")
+					.replace(/\[CANCELLED\]\s*/i, "");
+
+				// Deduplication check
+				const existing = await c.env.DB.prepare(
+					"SELECT id FROM meeting WHERE name = ? AND scheduled_at = ?",
+				)
+					.bind(cleanName, scheduled_at)
+					.first<{ id: number }>();
+
+				if (existing) {
+					continue; // Skip if a meeting with the same name and start time already exists
+				}
+
+				let message_ts: string | null = null;
+				const shouldAnnounceNow = scheduled_at <= now + twoWeeksInSeconds;
+
+				if (body.channel_id && shouldAnnounceNow && !isCancelled) {
+					try {
+						const blocks = buildAnnouncementBlocks(
+							{ id: 0, name: cleanName, description, scheduled_at, end_time },
+							{ yes: [], maybe: [], no: [] },
+						);
+						const posted = (await botClient.chat.postMessage({
+							channel: body.channel_id,
+							text: `Meeting: ${cleanName}`,
+							blocks,
+						})) as { ts?: string };
+						message_ts = posted.ts ?? null;
+					} catch (err) {
+						console.error("Failed to announce imported meeting", err);
+					}
+				}
+
+				const result = await c.env.DB.prepare(
+					`INSERT INTO meeting (series_id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				)
+					.bind(
+						seriesId,
+						cleanName,
+						description,
+						scheduled_at,
+						end_time,
+						channel_id ?? "", // Schema requires NOT NULL for channel_id
+						message_ts ?? "", // Schema requires NOT NULL for message_ts
+						isCancelled ? 1 : 0,
+					)
+					.run();
+
+				created.push({
+					id: result.meta.last_row_id as number,
+					name: cleanName,
+					scheduled_at,
+					end_time,
+					cancelled: isCancelled,
+				});
+			}
+
+			return c.json({
+				ok: true,
+				count: created.length,
+				meetings: created,
+			});
+		} catch (error: unknown) {
+			console.error("Error importing ICS:", error);
+			return c.json(
+				{ error: (error as Error).message || "Failed to parse ICS" },
+				500,
+			);
+		}
+	});
+
 	api.delete("/admin/meetings/:id", requireAdmin(), async (c) => {
 		const id = Number(c.req.param("id"));
 		const meeting = await c.env.DB.prepare(
@@ -875,6 +1029,27 @@ export function createWebApp(_env: Env) {
 
 	api.post("/admin/sync", requireAdmin(), async (c) => {
 		await syncAllUsers(c.env.DB, c.env.SLACK_ADMIN_TOKEN);
+		return c.json({ ok: true });
+	});
+
+	api.get("/admin/settings/:key", requireAdmin(), async (c) => {
+		const key = c.req.param("key");
+		const row = await c.env.DB.prepare(
+			"SELECT value FROM kv_store WHERE key = ?",
+		)
+			.bind(key)
+			.first<{ value: string }>();
+		return c.json({ value: row?.value ?? null });
+	});
+
+	api.post("/admin/settings/:key", requireAdmin(), async (c) => {
+		const key = c.req.param("key");
+		const { value } = await c.req.json<{ value: string }>();
+		await c.env.DB.prepare(
+			"INSERT INTO kv_store (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+		)
+			.bind(key, value)
+			.run();
 		return c.json({ ok: true });
 	});
 

@@ -51,6 +51,7 @@ export function Layout({
 							{navLink("/meetings", "Meetings")}
 							{navLink("/team", "Team")}
 							{navLink("/cdts", "CDTs")}
+							{session.is_admin && navLink("/admin", "Admin")}
 						</nav>
 					</div>
 

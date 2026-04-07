@@ -244,8 +244,34 @@ export const api = {
 			body: JSON.stringify({ cancelled }),
 		});
 	},
+	async importIcs(
+		url: string,
+		channel_id?: string,
+	): Promise<{ ok: boolean; count: number }> {
+		return (
+			await apiFetch("/api/admin/meetings/import-ics", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ url, channel_id }),
+			})
+		).json();
+	},
 	async deleteMeeting(id: number): Promise<void> {
 		await apiFetch(`/api/admin/meetings/${id}`, { method: "DELETE" });
+	},
+
+	// Settings
+	async getSetting(key: string): Promise<string | null> {
+		const res = await apiFetch(`/api/admin/settings/${key}`);
+		const json = await res.json();
+		return json.value;
+	},
+	async setSetting(key: string, value: string): Promise<void> {
+		await apiFetch(`/api/admin/settings/${key}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ value }),
+		});
 	},
 
 	// Slack channels

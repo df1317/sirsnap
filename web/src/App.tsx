@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { api, type Session } from "./lib/api";
+import { AdminPage } from "./pages/Admin";
 import { CdtsPage } from "./pages/Cdts";
 import { Dashboard } from "./pages/Dashboard";
 import { LoginPage } from "./pages/Login";
@@ -172,6 +173,7 @@ export default function App() {
 					path="/meetings/*"
 					element={<MeetingsPage session={session} />}
 				/>
+				<Route path="/admin/*" element={<AdminPage session={session} />} />
 
 				<Route path="/" element={<Dashboard session={session} />} />
 				<Route path="*" element={<Navigate to="/" replace />} />

@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS web_session (
   expires_at  INTEGER NOT NULL
 );
 
+-- Generic key-value store for app settings
+CREATE TABLE IF NOT EXISTS kv_store (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Generic cache for Slack API responses
 CREATE TABLE IF NOT EXISTS slack_cache (
   key        TEXT PRIMARY KEY,

@@ -108,17 +108,19 @@ function CreateMeetingDialog({
 	open,
 	onClose,
 	onCreated,
+	defaultChannel = "",
 }: {
 	open: boolean;
 	onClose: () => void;
 	onCreated: (m: AdminMeeting) => void;
+	defaultChannel?: string;
 }) {
 	const [name, setName] = useState("");
 	const [desc, setDesc] = useState("");
 	const [date, setDate] = useState<Date>();
 	const [time, setTime] = useState("");
 	const [endTime, setEndTime] = useState("");
-	const [channel, setChannel] = useState("");
+	const [channel, setChannel] = useState(defaultChannel);
 	const [creating, setCreating] = useState(false);
 
 	const [isRecurring, setIsRecurring] = useState(false);
@@ -573,10 +575,18 @@ function AdminMeetingsView() {
 	const [viewAttendanceMeeting, setViewAttendanceMeeting] =
 		useState<AdminMeeting | null>(null);
 	const [selectedMeetings, setSelectedMeetings] = useState<AdminMeeting[]>([]);
+	const [defaultChannel, setDefaultChannel] = useState("");
 	const now = Math.floor(Date.now() / 1000);
 
 	useEffect(() => {
-		api.getAdminMeetings().then(setMeetings);
+		api.getAdminMeetings().then((data) => {
+			setMeetings(
+				data.filter((m) => m.scheduled_at >= Math.floor(Date.now() / 1000)),
+			);
+		});
+		api.getSetting("default_channel").then((val) => {
+			if (val) setDefaultChannel(val);
+		});
 	}, []);
 
 	const handleCancel = useCallback(async (m: AdminMeeting) => {
@@ -640,8 +650,29 @@ function AdminMeetingsView() {
 					const m = row.original;
 					if (m.cancelled)
 						return <Badge variant="destructive">Cancelled</Badge>;
-					if (m.scheduled_at < now)
+
+					if (
+						(m.end_time && m.end_time <= now) ||
+						(!m.end_time && m.scheduled_at + 3 * 60 * 60 <= now)
+					) {
 						return <Badge variant="secondary">Past</Badge>;
+					}
+
+					if (
+						m.scheduled_at <= now &&
+						((m.end_time && m.end_time > now) ||
+							(!m.end_time && m.scheduled_at + 3 * 60 * 60 > now))
+					) {
+						return (
+							<Badge
+								variant="outline"
+								className="border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/50 dark:bg-amber-950/20"
+							>
+								In Progress
+							</Badge>
+						);
+					}
+
 					return <Badge variant="outline">Upcoming</Badge>;
 				},
 			},
@@ -759,6 +790,7 @@ function AdminMeetingsView() {
 				open={createOpen}
 				onClose={() => setCreateOpen(false)}
 				onCreated={(m) => setMeetings((prev) => [m, ...prev])}
+				defaultChannel={defaultChannel}
 			/>
 
 			{editMeeting && (
@@ -1206,7 +1238,12 @@ export function MeetingsPage({ session }: { session: Session }) {
 
 	const now = Math.floor(Date.now() / 1000);
 	const upcoming = meetings
-		.filter((m) => (m.end_time || m.scheduled_at) > now)
+		.filter(
+			(m) =>
+				(m.end_time && m.end_time > now) ||
+				(!m.end_time && m.scheduled_at + 3 * 60 * 60 > now) ||
+				m.scheduled_at > now,
+		)
 		.sort((a, b) => a.scheduled_at - b.scheduled_at);
 
 	if (loading)

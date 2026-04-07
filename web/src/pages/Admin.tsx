@@ -1,0 +1,230 @@
+import { useEffect, useState } from "react";
+import { ChannelPicker } from "../components/ChannelPicker";
+import { Layout } from "../components/Layout";
+import { Button } from "../components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { api, type Session } from "../lib/api";
+
+export function AdminPage({ session }: { session: Session }) {
+	const [url, setUrl] = useState("");
+	const [channel, setChannel] = useState("");
+	const [defaultMeetingLength, setDefaultMeetingLength] = useState("3");
+	const [importing, setImporting] = useState(false);
+	const [importResult, setImportResult] = useState<string | null>(null);
+	const [savingSettings, setSavingSettings] = useState(false);
+
+	useEffect(() => {
+		if (session.is_admin) {
+			api.getSetting("default_channel").then((val) => {
+				if (val) setChannel(val);
+			});
+			api.getSetting("default_meeting_length").then((val) => {
+				if (val) setDefaultMeetingLength(val);
+			});
+		}
+	}, [session.is_admin]);
+
+	const handleImport = async () => {
+		if (!url.trim()) return;
+		setImporting(true);
+
+		const btn = document.getElementById("import-btn");
+		const originalText = "Import Meetings";
+
+		try {
+			const res = await api.importIcs(url.trim(), channel || undefined);
+			// Show temporary success message instead of a blocking alert
+			if (btn) {
+				btn.innerText = `Imported ${res.count} events!`;
+				btn.classList.add("bg-green-600", "hover:bg-green-700");
+				setTimeout(() => {
+					btn.innerText = originalText;
+					btn.classList.remove("bg-green-600", "hover:bg-green-700");
+				}, 3000);
+			}
+			setImportResult(
+				res.count === 0
+					? "No new events were found."
+					: `Successfully imported ${res.count} events.`,
+			);
+			setTimeout(() => setImportResult(null), 5000);
+			setUrl("");
+		} catch (err) {
+			if (btn) {
+				btn.innerText = "Import Failed";
+				btn.classList.add("bg-red-600", "hover:bg-red-700");
+				setTimeout(() => {
+					btn.innerText = originalText;
+					btn.classList.remove("bg-red-600", "hover:bg-red-700");
+				}, 3000);
+			}
+			alert(
+				`Failed to import ICS: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			setImporting(false);
+		}
+	};
+
+	const handleSaveSettings = async () => {
+		setSavingSettings(true);
+		try {
+			await api.setSetting("default_channel", channel);
+			await api.setSetting("default_meeting_length", defaultMeetingLength);
+			// Show a temporary success message instead of a blocking alert
+			const btn = document.getElementById("save-settings-btn");
+			if (btn) {
+				const originalText = btn.innerText;
+				btn.innerText = "Saved!";
+				btn.classList.add("bg-green-600", "hover:bg-green-700");
+				setTimeout(() => {
+					btn.innerText = originalText;
+					btn.classList.remove("bg-green-600", "hover:bg-green-700");
+				}, 2000);
+			}
+		} catch (err) {
+			alert(
+				`Failed to save settings: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			setSavingSettings(false);
+		}
+	};
+
+	if (!session.is_admin) {
+		return (
+			<Layout session={session}>
+				<div className="flex h-[50vh] items-center justify-center">
+					<p className="text-muted-foreground">
+						You do not have permission to view this page.
+					</p>
+				</div>
+			</Layout>
+		);
+	}
+
+	return (
+		<Layout session={session}>
+			<div className="space-y-6">
+				<div>
+					<h1 className="font-semibold text-lg tracking-tight">
+						Admin Dashboard
+					</h1>
+					<p className="mt-0.5 text-muted-foreground text-sm">
+						Manage workspace settings and imports.
+					</p>
+				</div>
+
+				<div className="grid gap-6 md:grid-cols-2">
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">Import ICS</CardTitle>
+							<CardDescription>
+								To import from TeamSnap, go to{" "}
+								<a
+									href="https://go.teamsnap.com/team/export_schedule"
+									target="_blank"
+									rel="noreferrer"
+									className="text-primary underline hover:text-primary/80"
+								>
+									https://go.teamsnap.com/team/export_schedule
+								</a>
+								, copy the calendar link, and paste it below.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="space-y-1.5">
+								<label htmlFor="url-input" className="font-medium text-xs">
+									ICS URL <span className="text-destructive">*</span>
+								</label>
+								<Input
+									id="url-input"
+									value={url}
+									onChange={(e) => setUrl(e.target.value)}
+									placeholder="http://ical-cdn.teamsnap.com/..."
+									className="h-8 text-xs"
+								/>
+							</div>
+							{importResult && (
+								<p
+									className={`text-sm font-medium ${importResult.includes("Successfully") ? "text-green-600 dark:text-green-500" : "text-amber-600 dark:text-amber-500"}`}
+								>
+									{importResult}
+								</p>
+							)}
+						</CardContent>
+						<CardFooter>
+							<Button
+								id="import-btn"
+								size="sm"
+								onClick={handleImport}
+								disabled={importing || !url.trim()}
+							>
+								{importing ? "Importing…" : "Import Meetings"}
+							</Button>
+						</CardFooter>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">Workspace Settings</CardTitle>
+							<CardDescription>
+								Configure default workspace settings.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="flex flex-col space-y-1.5">
+								<label htmlFor="channel-picker" className="font-medium text-xs">
+									Default Announcements Channel
+								</label>
+								<ChannelPicker value={channel} onChange={setChannel} />
+								<p className="mt-1 text-muted-foreground text-xs">
+									Used as the default channel for meeting imports.
+								</p>
+							</div>
+							<div className="flex flex-col space-y-1.5">
+								<label
+									htmlFor="meeting-length-input"
+									className="font-medium text-xs"
+								>
+									Default Meeting Length (hours)
+								</label>
+								<Input
+									id="meeting-length-input"
+									type="number"
+									min="1"
+									max="24"
+									value={defaultMeetingLength}
+									onChange={(e) => setDefaultMeetingLength(e.target.value)}
+									className="h-8 text-xs"
+								/>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Used as the default length for meetings when an end time is
+									not specified.
+								</p>
+							</div>
+						</CardContent>
+						<CardFooter>
+							<Button
+								id="save-settings-btn"
+								size="sm"
+								onClick={handleSaveSettings}
+								disabled={savingSettings}
+							>
+								{savingSettings ? "Saving…" : "Save Settings"}
+							</Button>
+						</CardFooter>
+					</Card>
+				</div>
+			</div>
+		</Layout>
+	);
+}

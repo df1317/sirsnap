@@ -131,8 +131,8 @@ export const api = {
 	async getMeetings(): Promise<Meeting[]> {
 		return (await apiFetch("/api/meetings")).json();
 	},
-	async getPastMeetings(): Promise<Meeting[]> {
-		return (await apiFetch("/api/meetings/past")).json();
+	async getPastMeetings(limit = 20, offset = 0): Promise<Meeting[]> {
+		return (await apiFetch(`/api/meetings/past?limit=${limit}&offset=${offset}`)).json();
 	},
 	async getCdts(): Promise<Cdt[]> {
 		return (await apiFetch("/api/cdts")).json();

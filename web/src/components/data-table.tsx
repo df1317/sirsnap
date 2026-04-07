@@ -127,7 +127,7 @@ export function DataTable<TData, TValue>({
 					</span>
 				) : (
 					<span className="text-muted-foreground text-xs">
-						{totalCount} ${noun}
+						{totalCount} {noun}
 					</span>
 				)}
 				{extraToolbarAction && (

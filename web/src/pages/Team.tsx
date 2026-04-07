@@ -38,11 +38,13 @@ const statusColor: Record<string, string> = {
 };
 
 function formatDate(unix: number) {
-	return new Date(unix * 1000).toLocaleDateString("en-US", {
+	const d = new Date(unix * 1000);
+	const isCurrentYear = d.getFullYear() === new Date().getFullYear();
+	return d.toLocaleDateString("en-US", {
 		weekday: "short",
 		month: "short",
 		day: "numeric",
-		year: "numeric",
+		...(isCurrentYear ? {} : { year: "numeric" }),
 	});
 }
 
@@ -237,24 +239,6 @@ function TeamListView({
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-center justify-end">
-				{isAdmin && (
-					<div className="flex items-center gap-2">
-						{syncDone && (
-							<Badge
-								variant="outline"
-								className="border-emerald-200 bg-emerald-50 text-emerald-600"
-							>
-								Synced successfully
-							</Badge>
-						)}
-						<Button onClick={handleSync} disabled={syncing} size="sm">
-							{syncing ? "Syncing…" : "Sync from Slack"}
-						</Button>
-					</div>
-				)}
-			</div>
-
 			{isAdmin && selectedRows.length > 0 && (
 				<div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
 					<span className="font-medium text-xs">
@@ -327,10 +311,27 @@ function TeamListView({
 				enableRowSelection={isAdmin}
 				onSelectionChange={isAdmin ? setSelectedRows : undefined}
 				renderSubComponent={({ row }) => (
-					<div className="p-4">
-						<PunchCard user={row} />
+					<div className="p-4 cursor-pointer" onClick={() => openUser(row)}>
+						<PunchCard userId={row.user_id} />
 					</div>
 				)}
+				extraToolbarAction={
+					isAdmin && (
+						<div className="flex items-center gap-2">
+							{syncDone && (
+								<Badge
+									variant="outline"
+									className="border-emerald-200 bg-emerald-50 text-emerald-600"
+								>
+									Synced successfully
+								</Badge>
+							)}
+							<Button onClick={handleSync} disabled={syncing} size="sm">
+								{syncing ? "Syncing…" : "Sync from Slack"}
+							</Button>
+						</div>
+					)
+				}
 			/>
 
 			<Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

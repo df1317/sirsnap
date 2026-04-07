@@ -273,6 +273,8 @@ export function createWebApp(_env: Env) {
 	api.get("/meetings/past", requireSession(), async (c) => {
 		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const session = c.get("session")!;
+		const limit = parseInt(c.req.query("limit") || "20", 10);
+		const offset = parseInt(c.req.query("offset") || "0", 10);
 		const now = Math.floor(Date.now() / 1000);
 		const rows = await c.env.DB.prepare(
 			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
@@ -282,9 +284,9 @@ export function createWebApp(_env: Env) {
        FROM meeting m
        LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
        WHERE (m.end_time IS NOT NULL AND m.end_time <= ?) OR (m.end_time IS NULL AND m.scheduled_at + (3 * 60 * 60) <= ?) AND m.cancelled = 0
-       ORDER BY m.scheduled_at DESC LIMIT 20`,
+       ORDER BY m.scheduled_at DESC LIMIT ? OFFSET ?`,
 		)
-			.bind(session.user_id, now, now)
+			.bind(session.user_id, now, now, limit, offset)
 			.all();
 
 		return c.json(

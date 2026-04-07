@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type User } from "../lib/api";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Badge } from "./ui/badge";
+import { api } from "../lib/api";
 
-const roleVariant: Record<string, "student" | "mentor" | "parent" | "alumni"> =
-	{
-		student: "student",
-		mentor: "mentor",
-		parent: "parent",
-		alumni: "alumni",
-	};
-
-export function PunchCard({ user }: { user?: User } = {}) {
-	const userId = user?.user_id;
+export function PunchCard({ userId }: { userId?: string } = {}) {
 	const [attendanceDates, setAttendanceDates] = useState<
 		{ scheduled_at: number }[]
 	>([]);
@@ -61,9 +50,6 @@ export function PunchCard({ user }: { user?: User } = {}) {
 		if (count < 8) return { backgroundColor: "oklch(0.60 0.16 289.59)", width: "10px", height: "10px" };
 		return { backgroundColor: "oklch(0.50 0.20 289.59)", width: "12px", height: "12px" };
 	};
-
-	// Create a single array of 52 weeks
-	const weeks = Array.from({ length: 52 }).map((_, i) => i);
 
 	const getDayName = (dayIndex: number) => {
 		return [

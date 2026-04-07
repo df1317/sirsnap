@@ -59,17 +59,29 @@ import { cn } from "../lib/utils";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const formatDate = (unix: number) =>
-	new Date(unix * 1000).toLocaleDateString("en-US", {
+const formatDate = (unix: number) => {
+	const d = new Date(unix * 1000);
+	const isCurrentYear = d.getFullYear() === new Date().getFullYear();
+	
+	let dateStr = d.toLocaleDateString("en-US", {
 		weekday: "short",
 		month: "short",
 		day: "numeric",
-	}) +
-	" · " +
-	new Date(unix * 1000).toLocaleTimeString("en-US", {
-		hour: "numeric",
-		minute: "2-digit",
 	});
+
+	if (!isCurrentYear) {
+		dateStr += `, ${d.getFullYear()}`;
+	}
+
+	return (
+		dateStr +
+		" · " +
+		d.toLocaleTimeString("en-US", {
+			hour: "numeric",
+			minute: "2-digit",
+		})
+	);
+};
 
 const fromUnix = (unix: number) => new Date(unix * 1000);
 const toUnix = (d: Date) => Math.floor(d.getTime() / 1000);
@@ -1128,15 +1140,52 @@ function UpcomingMeetingsView({
 function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 	const [meetings, setMeetings] = useState<Meeting[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [offset, setOffset] = useState(0);
+	const [hasMore, setHasMore] = useState(true);
+	const [isFetchingMore, setIsFetchingMore] = useState(false);
+	const limit = 20;
+
 	const [viewAttendanceMeeting, setViewAttendanceMeeting] =
 		useState<AdminMeeting | null>(null);
 
-	useEffect(() => {
-		api.getPastMeetings().then((data) => {
-			setMeetings(data);
+	const fetchMeetings = async (currentOffset: number, replace = false) => {
+		try {
+			if (!replace) setIsFetchingMore(true);
+			const data = await api.getPastMeetings(limit, currentOffset);
+			setMeetings((prev) => (replace ? data : [...prev, ...data]));
+			setHasMore(data.length === limit);
+		} catch (error) {
+			console.error("Failed to fetch past meetings", error);
+		} finally {
 			setLoading(false);
-		});
+			setIsFetchingMore(false);
+		}
+	};
+
+	useEffect(() => {
+		fetchMeetings(0, true);
 	}, []);
+
+	const handleLoadMore = () => {
+		if (isFetchingMore) return;
+		const newOffset = offset + limit;
+		setOffset(newOffset);
+		fetchMeetings(newOffset);
+	};
+
+	useEffect(() => {
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting && hasMore && !loading && !isFetchingMore) {
+					handleLoadMore();
+				}
+			},
+			{ threshold: 0.1, rootMargin: "400px" },
+		);
+		const el = document.getElementById("load-more-trigger");
+		if (el) observer.observe(el);
+		return () => observer.disconnect();
+	}, [hasMore, loading, offset, isFetchingMore]);
 
 	const columns = useMemo<ColumnDef<Meeting, unknown>[]>(
 		() => [
@@ -1259,6 +1308,13 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 						: undefined
 				}
 			/>
+			{hasMore && (
+				<div id="load-more-trigger" className="flex justify-center mt-4">
+					<Button variant="outline" onClick={handleLoadMore} disabled={isFetchingMore}>
+						{isFetchingMore ? "Loading..." : "Load More"}
+					</Button>
+				</div>
+			)}
 			{viewAttendanceMeeting && (
 				<MeetingAttendanceDialog
 					meeting={viewAttendanceMeeting}

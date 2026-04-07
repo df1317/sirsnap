@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import {
 	CalendarIcon,
 	Check,
+	Copy,
 	HelpCircle,
 	Pencil,
 	Plus,
@@ -1181,6 +1182,14 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 export function MeetingsPage({ session }: { session: Session }) {
 	const [meetings, setMeetings] = useState<Meeting[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [copied, setCopied] = useState(false);
+
+	const handleCopyCalendar = () => {
+		const url = window.location.origin + "/calendar.ics";
+		navigator.clipboard.writeText(url);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	};
 
 	useEffect(() => {
 		const cached = sessionStorage.getItem("meetings_cache");
@@ -1307,11 +1316,22 @@ export function MeetingsPage({ session }: { session: Session }) {
 	return (
 		<Layout session={session}>
 			<div className="space-y-4">
-				<div>
-					<h1 className="font-semibold text-lg tracking-tight">Meetings</h1>
-					<p className="mt-0.5 text-muted-foreground text-sm">
-						RSVP to upcoming meetings.
-					</p>
+				<div className="flex items-start justify-between">
+					<div>
+						<h1 className="font-semibold text-lg tracking-tight">Meetings</h1>
+						<p className="mt-0.5 text-muted-foreground text-sm">
+							RSVP to upcoming meetings.
+						</p>
+					</div>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleCopyCalendar}
+						className="gap-2"
+					>
+						{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+						{copied ? "Copied!" : "Calendar Feed"}
+					</Button>
 				</div>
 
 				<Tabs defaultValue="upcoming">

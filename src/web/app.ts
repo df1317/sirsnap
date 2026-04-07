@@ -34,6 +34,71 @@ export function createWebApp(_env: Env) {
 	// Server-side auth (must stay here — sets httpOnly cookies)
 	app.route("/api/auth", authRoutes);
 
+	// Public calendar feed
+	app.get("/calendar.ics", async (c) => {
+		const rows = await c.env.DB.prepare(
+			`SELECT name, description, scheduled_at, end_time, cancelled
+			 FROM meeting
+			 ORDER BY scheduled_at ASC`,
+		).all<{
+			name: string;
+			description: string;
+			scheduled_at: number;
+			end_time: number | null;
+			cancelled: number;
+		}>();
+
+		let ics = "BEGIN:VCALENDAR\r\n";
+		ics += "VERSION:2.0\r\n";
+		ics += "PRODID:-//SirSnap//Calendar//EN\r\n";
+		ics += "CALSCALE:GREGORIAN\r\n";
+		ics += "METHOD:PUBLISH\r\n";
+		ics += "X-WR-CALNAME:SirSnap Events\r\n";
+
+		const now = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+		for (const m of rows.results) {
+			const start = new Date(m.scheduled_at * 1000)
+				.toISOString()
+				.replace(/[-:]/g, "")
+				.split(".")[0] + "Z";
+			
+			// Default to 3 hours if no end time is specified
+			const endTimeSeconds = m.end_time || m.scheduled_at + 3 * 60 * 60;
+			const end = new Date(endTimeSeconds * 1000)
+				.toISOString()
+				.replace(/[-:]/g, "")
+				.split(".")[0] + "Z";
+
+			ics += "BEGIN:VEVENT\r\n";
+			ics += `DTSTAMP:${now}\r\n`;
+			ics += `UID:sirsnap-event-${m.scheduled_at}-${encodeURIComponent(m.name.replace(/\s+/g, "-"))}@sirsnap\r\n`;
+			ics += `DTSTART:${start}\r\n`;
+			ics += `DTEND:${end}\r\n`;
+			ics += `SUMMARY:${m.cancelled === 1 ? "[CANCELED] " : ""}${m.name.replace(/\r?\n/g, "\\n")}\r\n`;
+			
+			if (m.description) {
+				ics += `DESCRIPTION:${m.description.replace(/\r?\n/g, "\\n")}\r\n`;
+			}
+			
+			if (m.cancelled === 1) {
+				ics += "STATUS:CANCELLED\r\n";
+			} else {
+				ics += "STATUS:CONFIRMED\r\n";
+			}
+			
+			ics += "END:VEVENT\r\n";
+		}
+
+		ics += "END:VCALENDAR";
+
+		return c.text(ics, 200, {
+			"Content-Type": "text/calendar; charset=utf-8",
+			"Content-Disposition": 'attachment; filename="calendar.ics"',
+			"Cache-Control": "public, max-age=3600",
+		});
+	});
+
 	// JSON API
 	const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 

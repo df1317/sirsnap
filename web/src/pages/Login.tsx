@@ -31,14 +31,18 @@ export function LoginPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-zinc-50/50 flex flex-col items-center justify-center p-4">
-			<div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-zinc-200/50 p-8 text-center space-y-8">
-				<div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-inner">
-					<span className="text-xl font-bold text-white tracking-tight">S</span>
+		<div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+			{/* Decorative Background */}
+			<div className="absolute inset-0 z-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]"></div>
+			<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-primary/5 rounded-full blur-[100px] z-0 pointer-events-none"></div>
+
+			<div className="max-w-sm w-full bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-zinc-200/50 p-8 text-center space-y-8 z-10 relative">
+				<div className="mx-auto w-24 h-24 shadow-xl shadow-primary/10 rounded-2xl overflow-hidden border border-zinc-200/50">
+					<img src="/sir.jpeg" alt="Sirsnap Logo" className="w-full h-full object-cover" />
 				</div>
 				
-				<div className="space-y-2">
-					<h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+				<div className="space-y-3">
+					<h1 className="text-3xl font-bold tracking-tight bg-gradient-to-br from-zinc-900 to-zinc-600 bg-clip-text text-transparent">
 						Welcome to Sirsnap
 					</h1>
 					<p className="text-sm text-zinc-500">
@@ -69,7 +73,7 @@ export function LoginPage() {
 				</Button>
 			</div>
 			
-			<div className="absolute bottom-0 left-0 w-full">
+			<div className="absolute bottom-0 left-0 w-full z-10">
 				<Footer />
 			</div>
 		</div>

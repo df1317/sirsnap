@@ -1122,8 +1122,8 @@ export function createWebApp(_env: Env) {
 	api.get("/admin/stats", requireAdmin(), async (c) => {
 		const [users, meetings, pastMeetings, pendingAnnouncements, cdts, attendance] = await Promise.all([
 			c.env.DB.prepare("SELECT COUNT(*) as count FROM slack_user").first<{ count: number }>(),
-			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting").first<{ count: number }>(),
-			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting WHERE end_time <= ? OR scheduled_at <= ?").bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - (3 * 60 * 60)).first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting WHERE cancelled = 0 AND (end_time IS NULL OR end_time > ?) AND (end_time IS NOT NULL OR scheduled_at + (3 * 60 * 60) > ?)").bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting WHERE cancelled = 0 AND ((end_time IS NOT NULL AND end_time <= ?) OR (end_time IS NULL AND scheduled_at + (3 * 60 * 60) <= ?))").bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).first<{ count: number }>(),
 			c.env.DB.prepare("SELECT COUNT(*) as count FROM pending_announcement").first<{ count: number }>(),
 			c.env.DB.prepare("SELECT COUNT(*) as count FROM cdt").first<{ count: number }>(),
 			c.env.DB.prepare("SELECT COUNT(*) as count FROM attendance").first<{ count: number }>(),

@@ -268,7 +268,7 @@ export function AdminPage({ session }: { session: Session }) {
 										<p className="text-2xl font-bold">{stats.pastMeetings}</p>
 									</div>
 									<div>
-										<p className="text-sm font-medium">Pending Announcements</p>
+										<p className="text-sm font-medium">Queued Slack Updates</p>
 										<p className="text-2xl font-bold">
 											{stats.pendingAnnouncements}
 										</p>

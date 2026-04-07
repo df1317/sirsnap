@@ -313,7 +313,7 @@ function TeamListView({
 				</div>
 			)}
 
-			<DataTable
+			<DataTable noun="members"
 				columns={columns}
 				data={users}
 				filterPlaceholder="Filter members…"

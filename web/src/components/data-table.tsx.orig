@@ -28,7 +28,6 @@ interface DataTableProps<TData, TValue> {
 	onRowClick?: (row: TData) => void;
 	enableRowSelection?: boolean;
 	onSelectionChange?: (rows: TData[]) => void;
-	noun?: string;
 }
 
 export function DataTable<TData, TValue>({
@@ -38,7 +37,6 @@ export function DataTable<TData, TValue>({
 	onRowClick,
 	enableRowSelection = false,
 	onSelectionChange,
-	noun = "rows",
 	extraToolbarAction,
 }: DataTableProps<TData, TValue> & { extraToolbarAction?: React.ReactNode }) {
 	const [sorting, setSorting] = useState<SortingState>([]);
@@ -113,11 +111,11 @@ export function DataTable<TData, TValue>({
 				/>
 				{enableRowSelection ? (
 					<span className="text-muted-foreground text-xs">
-						{selectedCount > 0 ? `${selectedCount} of ${totalCount} selected` : `${totalCount} ${noun}`}
+						{selectedCount > 0 ? `${selectedCount} of ${totalCount} selected` : `${totalCount} meetings`}
 					</span>
 				) : (
 					<span className="text-muted-foreground text-xs">
-						{totalCount} ${noun}
+						{totalCount} meetings
 					</span>
 				)}
 				{extraToolbarAction && (

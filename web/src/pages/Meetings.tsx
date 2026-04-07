@@ -47,6 +47,7 @@ import {
 	TabsTrigger,
 } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { Select } from "../components/ui/select";
 import {
 	type AdminMeeting,
 	api,
@@ -280,7 +281,7 @@ function CreateMeetingDialog({
 									onChange={(e) => setTime(e.target.value)}
 									className="h-8 flex-1 px-2 text-xs"
 								/>
-								<span className="text-muted-foreground text-xs">-</span>
+								<span className="text-muted-foreground text-xs px-1">-</span>
 								<Input
 									type="time"
 									value={endTime}
@@ -384,34 +385,52 @@ function EditMeetingDialog({
 	onSaved: (m: AdminMeeting) => void;
 }) {
 	const initial = fromUnix(meeting.scheduled_at);
+	let initialEndTimeStr = "";
+	if (meeting.end_time) {
+		const endDt = fromUnix(meeting.end_time);
+		initialEndTimeStr = `${String(endDt.getUTCHours()).padStart(2, "0")}:${String(endDt.getUTCMinutes()).padStart(2, "0")}`;
+	}
+
 	const [name, setName] = useState(meeting.name);
 	const [desc, setDesc] = useState(meeting.description ?? "");
 	const [date, setDate] = useState<Date>(initial);
 	const [time, setTime] = useState(
 		`${String(initial.getUTCHours()).padStart(2, "0")}:${String(initial.getUTCMinutes()).padStart(2, "0")}`,
 	);
+	const [endTime, setEndTime] = useState(initialEndTimeStr);
 	const [saving, setSaving] = useState(false);
 
 	const handleSave = async () => {
 		setSaving(true);
 		try {
 			let scheduledAt: number | undefined;
+			let endUnix: number | undefined;
 			if (date && time) {
 				const [hours, minutes] = time.split(":").map(Number);
 				const dt = new Date(date);
 				dt.setUTCHours(hours, minutes, 0, 0);
 				scheduledAt = toUnix(dt);
+				
+				if (endTime) {
+					const [endHours, endMinutes] = endTime.split(":").map(Number);
+					const endDt = new Date(date);
+					endDt.setUTCHours(endHours, endMinutes, 0, 0);
+					if (endDt < dt) endDt.setDate(endDt.getDate() + 1);
+					endUnix = toUnix(endDt);
+				}
 			}
 			await api.updateMeeting(meeting.id, {
 				name: name.trim() || undefined,
 				description: desc.trim() || undefined,
 				scheduled_at: scheduledAt,
+				end_time: endUnix,
 			});
 			onSaved({
 				...meeting,
 				name: name.trim() || meeting.name,
 				description: desc.trim(),
 				scheduled_at: scheduledAt ?? meeting.scheduled_at,
+				end_time: endUnix ?? meeting.end_time,
 			});
 		} finally {
 			setSaving(false);
@@ -470,6 +489,12 @@ function EditMeetingDialog({
 								type="time"
 								value={time}
 								onChange={(e) => setTime(e.target.value)}
+								className="h-8 w-28 text-xs"
+							/>
+							<Input
+								type="time"
+								value={endTime}
+								onChange={(e) => setEndTime(e.target.value)}
 								className="h-8 w-28 text-xs"
 							/>
 						</div>
@@ -578,6 +603,8 @@ function AdminMeetingsView() {
 		useState<AdminMeeting | null>(null);
 	const [selectedMeetings, setSelectedMeetings] = useState<AdminMeeting[]>([]);
 	const [defaultChannel, setDefaultChannel] = useState("");
+	const [bulkDuration, setBulkDuration] = useState<string>("60");
+	const [savingBulk, setSavingBulk] = useState(false);
 	const now = Math.floor(Date.now() / 1000);
 
 	useEffect(() => {
@@ -607,6 +634,36 @@ function AdminMeetingsView() {
 		await api.deleteMeeting(id);
 		setMeetings((prev) => prev.filter((x) => x.id !== id));
 	}, []);
+
+	const handleBulkDurationUpdate = async () => {
+		if (selectedMeetings.length === 0 || savingBulk) return;
+		setSavingBulk(true);
+		try {
+			const durationMinutes = parseInt(bulkDuration, 10);
+			if (!durationMinutes) return;
+
+			await Promise.all(
+				selectedMeetings.map((m) => {
+					const endUnix = m.scheduled_at + (durationMinutes * 60);
+					return api.updateMeeting(m.id, {
+						end_time: endUnix,
+					});
+				})
+			);
+
+			setMeetings((prev) =>
+				prev.map((m) => {
+					if (selectedMeetings.some((sm) => sm.id === m.id)) {
+						return { ...m, end_time: m.scheduled_at + (durationMinutes * 60) };
+					}
+					return m;
+				})
+			);
+			setSelectedMeetings([]);
+		} finally {
+			setSavingBulk(false);
+		}
+	};
 
 	// Use useMemo to prevent recreating the columns array on every render
 	// which prevents the DataTable and underlying images from re-rendering
@@ -743,49 +800,61 @@ function AdminMeetingsView() {
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-2">
-					<span className="text-muted-foreground text-xs">
-						{meetings.length} meetings
-					</span>
-					{selectedMeetings.length > 0 && (
-						<>
-							<Separator orientation="vertical" className="h-4" />
-							<span className="text-muted-foreground text-xs">
-								{selectedMeetings.length} selected
+			{selectedMeetings.length > 0 && (
+				<Card className="border-primary/20 bg-muted/30 py-0">
+					<CardContent className="flex items-center justify-between gap-4 p-2 pb-2">
+						<div className="flex items-center gap-2">
+							<span className="font-medium text-sm">
+								{selectedMeetings.length} meetings selected
 							</span>
-						</>
-					)}
-				</div>
-				<div className="flex items-center gap-2">
-					{selectedMeetings.length > 0 && (
-						<Button
-							size="sm"
-							variant="destructive"
-							onClick={() => {
-								for (const m of selectedMeetings) {
-									handleDelete(m.id);
-								}
-								setSelectedMeetings([]);
-							}}
-						>
-							<Trash2 className="mr-1 size-3.5" />
-							Delete Selected
-						</Button>
-					)}
-					<Button size="sm" onClick={() => setCreateOpen(true)}>
-						<Plus className="mr-1 size-3.5" />
-						New Meeting
-					</Button>
-				</div>
-			</div>
-			<DataTable
+						</div>
+						<div className="flex items-center gap-2">
+							<div className="flex items-center gap-1.5 rounded-md border p-1">
+								<Select value={bulkDuration} onChange={(e) => setBulkDuration(e.target.value)} className="h-7 border-none text-xs w-28 bg-transparent focus:ring-0">
+									<option value="30">30 min</option>
+									<option value="45">45 min</option>
+									<option value="60">1 hour</option>
+									<option value="90">1.5 hours</option>
+									<option value="120">2 hours</option>
+									<option value="180">3 hours</option>
+									<option value="240">4 hours</option>
+									<option value="300">5 hours</option>
+									<option value="360">6 hours</option>
+								</Select>
+								<Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleBulkDurationUpdate} disabled={savingBulk}>
+									{savingBulk ? "Applying…" : "Set Duration"}
+								</Button>
+							</div>
+							<Button
+								size="sm"
+								variant="destructive"
+								onClick={() => {
+									for (const m of selectedMeetings) {
+										handleDelete(m.id);
+									}
+									setSelectedMeetings([]);
+								}}
+							>
+								<Trash2 className="mr-1 size-3.5" />
+								Delete Selected
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+			<DataTable noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter meetings…"
 				onRowClick={(m) => setViewAttendanceMeeting(m)}
 				enableRowSelection
 				onSelectionChange={setSelectedMeetings}
+				extraToolbarAction={
+					<Button size="sm" onClick={() => setCreateOpen(true)}>
+						<Plus className="mr-1 size-3.5" />
+						New Meeting
+					</Button>
+				}
 			/>
 
 			<CreateMeetingDialog
@@ -988,8 +1057,8 @@ function UpcomingMeetingsView({
 	return (
 		<div className="space-y-4">
 			{selectedMeetings.length > 0 && (
-				<Card className="border-primary/20 bg-muted/30">
-					<CardContent className="flex items-center justify-between gap-4 p-3">
+				<Card className="border-primary/20 bg-muted/30 py-0">
+					<CardContent className="flex items-center justify-between gap-4 p-2 pb-2">
 						<span className="font-medium text-sm">
 							{selectedMeetings.length} meetings selected
 						</span>
@@ -1026,7 +1095,7 @@ function UpcomingMeetingsView({
 					</CardContent>
 				</Card>
 			)}
-			<DataTable
+			<DataTable noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter upcoming meetings…"
@@ -1160,7 +1229,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 
 	return (
 		<div className="space-y-4">
-			<DataTable
+			<DataTable noun="meetings"
 				columns={columns}
 				data={meetings}
 				filterPlaceholder="Filter past meetings…"

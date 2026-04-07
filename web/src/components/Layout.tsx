@@ -68,7 +68,7 @@ export function Layout({
 							variant="ghost"
 							size="sm"
 							onClick={async () => {
-								await fetch("/auth/logout", { method: "POST" });
+								await fetch("/api/auth/logout", { method: "POST" });
 								window.location.href = "/";
 							}}
 							className="text-[13px] text-muted-foreground h-7 px-2"

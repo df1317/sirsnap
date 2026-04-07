@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Sirsnap - Signing out...</title>
+    <style>
+      body { margin: 0; font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #fafafa; }
+      .loader { width: 48px; height: 48px; border: 4px solid #e5e7eb; border-bottom-color: #3b82f6; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
+      @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      .container { text-align: center; }
+      .text { margin-top: 16px; color: #6b7280; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="loader"></div>
+      <div class="text">Signing out...</div>
+    </div>
+    <script>
+      (async () => {
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+        } catch (e) {
+          console.error(e);
+        }
+        window.location.href = '/';
+      })();
+    </script>
+  </body>
+</html>

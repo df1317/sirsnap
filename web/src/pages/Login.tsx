@@ -21,7 +21,7 @@ export function LoginPage() {
 	const handleLogin = async () => {
 		setLoading(true);
 		try {
-			const res = await fetch("/auth/login");
+			const res = await fetch("/api/auth/login");
 			const data = await res.json();
 			if (data.url) {
 				window.location.href = data.url;

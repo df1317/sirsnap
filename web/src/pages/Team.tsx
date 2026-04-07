@@ -489,9 +489,20 @@ export function TeamPage({ session }: { session: Session }) {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
+		const cachedUsers = sessionStorage.getItem("users_cache");
+		const cachedCdts = sessionStorage.getItem("cdts_cache");
+
+		if (cachedUsers && cachedCdts) {
+			setUsers(JSON.parse(cachedUsers));
+			setCdts(JSON.parse(cachedCdts));
+			setLoading(false);
+		}
+
 		Promise.all([api.getUsers(), api.getCdts()]).then(([u, c]) => {
 			setUsers(u);
 			setCdts(c);
+			sessionStorage.setItem("users_cache", JSON.stringify(u));
+			sessionStorage.setItem("cdts_cache", JSON.stringify(c));
 			setLoading(false);
 		});
 	}, []);
@@ -499,8 +510,10 @@ export function TeamPage({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-					Loading…
+				<div className="space-y-4 animate-pulse">
+					<div className="h-6 w-16 bg-muted rounded"></div>
+					<div className="h-4 w-48 bg-muted rounded"></div>
+					<div className="h-64 w-full bg-muted rounded mt-4"></div>
 				</div>
 			</Layout>
 		);

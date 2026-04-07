@@ -1,3 +1,4 @@
+import { Link, useLocation } from "react-router-dom";
 import { type Session } from "../lib/api";
 import { Button } from "./ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
@@ -12,15 +13,16 @@ export function Layout({
 	session: Session;
 	children: React.ReactNode;
 }) {
+	const location = useLocation();
+
 	const isActive = (p: string) => {
-		const current = path();
-		if (p === "/") return current === "/";
-		return current.startsWith(p);
+		if (p === "/") return location.pathname === "/";
+		return location.pathname.startsWith(p);
 	};
 
 	const navLink = (href: string, label: string) => (
-		<a
-			href={href}
+		<Link
+			to={href}
 			className={`text-[13px] px-3 py-1.5 rounded-md transition-colors ${
 				isActive(href)
 					? "text-foreground font-medium"
@@ -28,7 +30,7 @@ export function Layout({
 			}`}
 		>
 			{label}
-		</a>
+		</Link>
 	);
 
 	return (
@@ -36,18 +38,17 @@ export function Layout({
 			<header className="sticky top-0 z-50 w-full border-b border-border/60 bg-white/80 backdrop-blur-md">
 				<div className="max-w-5xl mx-auto px-5 h-[52px] flex items-center justify-between">
 					<div className="flex items-center gap-5">
-						<a href="/" className="flex items-center gap-2 shrink-0">
+						<Link to="/" className="flex items-center gap-2 shrink-0">
 							<img src="/favicon-32x32.png" alt="Sirsnap Logo" className="w-6 h-6 rounded-md object-contain" />
 							<span className="font-semibold text-[13px] tracking-tight">
 								Sirsnap
 							</span>
-						</a>
+						</Link>
 						<nav className="flex items-center">
 							{navLink("/", "Home")}
 							{navLink("/meetings", "Meetings")}
 							{navLink("/team", "Team")}
 							{navLink("/cdts", "CDTs")}
-							{session.is_admin && navLink("/admin", "Admin")}
 						</nav>
 					</div>
 

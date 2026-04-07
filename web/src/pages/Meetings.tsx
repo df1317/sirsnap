@@ -1066,8 +1066,15 @@ export function MeetingsPage({ session }: { session: Session }) {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
+		const cached = sessionStorage.getItem("meetings_cache");
+		if (cached) {
+			setMeetings(JSON.parse(cached));
+			setLoading(false);
+		}
+
 		api.getMeetings().then((m) => {
 			setMeetings(m);
+			sessionStorage.setItem("meetings_cache", JSON.stringify(m));
 			setLoading(false);
 		});
 	}, [session.is_admin]);
@@ -1108,8 +1115,45 @@ export function MeetingsPage({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-					Loading…
+				<div className="space-y-6 animate-pulse">
+					<div className="space-y-1.5">
+						<div className="h-6 w-24 bg-muted rounded"></div>
+						<div className="h-4 w-48 bg-muted rounded"></div>
+					</div>
+					<div className="h-9 w-64 bg-muted rounded-md mt-4 mb-8"></div>
+					<div className="border rounded-md overflow-hidden bg-card">
+						<div className="h-10 border-b bg-muted/30"></div>
+						<div className="flex items-center gap-4 p-4 h-14 border-b">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+						<div className="flex items-center gap-4 p-4 h-14 border-b">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+						<div className="flex items-center gap-4 p-4 h-14 border-b">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+						<div className="flex items-center gap-4 p-4 h-14 border-b">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+						<div className="flex items-center gap-4 p-4 h-14 border-b">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+						<div className="flex items-center gap-4 p-4 h-14">
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/4 bg-muted rounded"></div>
+							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						</div>
+					</div>
 				</div>
 			</Layout>
 		);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
 	api,
 	type Session,
@@ -309,11 +310,25 @@ export function Dashboard({ session }: { session: Session }) {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
+		const cachedUsers = sessionStorage.getItem("users_cache");
+		const cachedCdts = sessionStorage.getItem("cdts_cache");
+		const cachedMeetings = sessionStorage.getItem("meetings_cache");
+
+		if (cachedUsers && cachedCdts && cachedMeetings) {
+			setUsers(JSON.parse(cachedUsers));
+			setCdts(JSON.parse(cachedCdts));
+			setMeetings(JSON.parse(cachedMeetings));
+			setLoading(false);
+		}
+
 		Promise.all([api.getUsers(), api.getCdts(), api.getMeetings()]).then(
 			([u, c, m]) => {
 				setUsers(u);
 				setCdts(c);
 				setMeetings(m);
+				sessionStorage.setItem("users_cache", JSON.stringify(u));
+				sessionStorage.setItem("cdts_cache", JSON.stringify(c));
+				sessionStorage.setItem("meetings_cache", JSON.stringify(m));
 				setLoading(false);
 			},
 		);
@@ -322,8 +337,36 @@ export function Dashboard({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-					Loading…
+				<div className="space-y-6 animate-pulse">
+					<div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-6">
+						<div className="space-y-3">
+							<div className="h-4 w-24 bg-muted rounded"></div>
+							<Card>
+								<CardContent className="pt-5 pb-5">
+									<div className="flex gap-5">
+										<div className="shrink-0 w-16 space-y-2">
+											<div className="h-3 w-10 bg-muted rounded mx-auto"></div>
+											<div className="h-8 w-12 bg-muted rounded mx-auto"></div>
+										</div>
+										<div className="flex-1 space-y-3">
+											<div className="h-5 w-3/4 bg-muted rounded"></div>
+											<div className="h-4 w-1/2 bg-muted rounded"></div>
+											<div className="h-3 w-1/3 bg-muted rounded"></div>
+											<div className="flex gap-2 mt-4">
+												<div className="h-8 w-16 bg-muted rounded"></div>
+												<div className="h-8 w-16 bg-muted rounded"></div>
+												<div className="h-8 w-16 bg-muted rounded"></div>
+											</div>
+										</div>
+									</div>
+								</CardContent>
+							</Card>
+						</div>
+						<div className="space-y-3">
+							<div className="h-4 w-20 bg-muted rounded"></div>
+							<Card className="h-48 bg-muted/20"></Card>
+						</div>
+					</div>
 				</div>
 			</Layout>
 		);
@@ -377,12 +420,12 @@ export function Dashboard({ session }: { session: Session }) {
 									<p className="text-sm text-muted-foreground">
 										No upcoming meetings.
 									</p>
-									<a
-										href="/meetings"
+									<Link
+										to="/meetings"
 										className="text-sm text-primary hover:underline mt-1 inline-block"
 									>
 										View all meetings
-									</a>
+									</Link>
 								</CardContent>
 							</Card>
 						)}
@@ -407,12 +450,12 @@ export function Dashboard({ session }: { session: Session }) {
 						<Card className="overflow-hidden py-0">
 							{rest.map((m, i) => (
 								<div key={m.id}>
-									<a
-										href="/meetings"
+									<Link
+										to="/meetings"
 										className="block hover:bg-muted/30 transition-colors"
 									>
 										<MeetingRow meeting={m} />
-									</a>
+									</Link>
 									{i < rest.length - 1 && <Separator />}
 								</div>
 							))}

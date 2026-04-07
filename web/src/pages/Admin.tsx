@@ -55,7 +55,6 @@ export function AdminPage({ session }: { session: Session }) {
 					? "No new events were found."
 					: `Successfully imported ${res.count} events.`,
 			);
-			setTimeout(() => setImportResult(null), 5000);
 			setUrl("");
 		} catch (err) {
 			if (btn) {

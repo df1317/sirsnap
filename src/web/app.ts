@@ -918,12 +918,32 @@ export function createWebApp(_env: Env) {
 				const start = new Date(event.start);
 				const scheduled_at = Math.floor(start.getTime() / 1000);
 
-				// Skip old events
-				if (scheduled_at < now - 24 * 60 * 60) continue;
-
+				// Skip past events based on their end time (or start time + fallback)
 				let end_time = null;
 				if (event.end) {
 					end_time = Math.floor(new Date(event.end).getTime() / 1000);
+				}
+
+				let defaultMeetingLength = 3;
+				const setting = await c.env.DB.prepare(
+					"SELECT value FROM kv_store WHERE key = ?",
+				)
+					.bind("default_meeting_length")
+					.first<{ value: string }>();
+				if (setting?.value) {
+					defaultMeetingLength = parseInt(setting.value, 10);
+				}
+
+				// When parsing ICS `start` and `end` they come in as UTC strings but node-ical correctly
+				// adjusts them. The issue is likely the time of the worker comparing against `now`.
+				// By skipping the `end_time` logic and ensuring the fallback logic accurately checks 
+				// the end of the "In Progress" window we avoid accidentally importing slightly past meetings.
+				const isPast = end_time
+					? end_time <= now
+					: scheduled_at + defaultMeetingLength * 60 * 60 <= now;
+
+				if (isPast) {
+					continue;
 				}
 
 				const name = event.summary || "Imported Meeting";

@@ -156,8 +156,8 @@ export async function checkPendingMeetings(env: Env) {
 	const pending = await env.DB.prepare(
 		`SELECT id, name, description, scheduled_at, channel_id 
      FROM meeting 
-     WHERE channel_id IS NOT NULL 
-       AND message_ts IS NULL 
+     WHERE channel_id != '' 
+       AND message_ts = '' 
        AND cancelled = 0 
        AND scheduled_at > ?
        AND scheduled_at <= ?`,

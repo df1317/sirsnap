@@ -1,18 +1,8 @@
-# SirSnap - Team 1317's Slack-Based TeamSnap
+# SirSnap 🦆
 
-A Slack bot built with [slack-edge](https://github.com/yusukebe/slack-edge) running on Cloudflare Workers for Team 1317 Digital Fusion.
+![screenshot of the page](https://cdn.hackclub.com/019d6a16-bcec-7720-8162-56705f73a21e/image.png)
 
-## Features
-
-- **Slash Commands**:
-  - `/hello` - Get a friendly greeting with quick check-in/out buttons
-  - `/attendance [in|out|status|help]` - Full attendance tracking system
-- **Button Interactions**: Quick check-in/out buttons for easy attendance tracking
-- **App Mentions**: Bot responds when mentioned in channels
-- **Direct Messages**: Bot responds to DMs
-- **Health Check**: Simple endpoint at `/health`
-
-## Setup
+A Slack bot built with [slack-edge](https://github.com/yusukebe/slack-edge) running on Cloudflare Workers for Team 1317 Digital Fusion. Features a full web dashboard for managing meetings, RSVPs, team members, and syncing with existing TeamSnap rosters.
 
 ## Setup
 
@@ -33,13 +23,19 @@ You can either:
 
 1. Go to [Slack API](https://api.slack.com/apps) and create a new app
 2. Under "OAuth & Permissions", add these bot token scopes:
-   - `app_mentions:read`
-   - `channels:history`
+   - `chat:write.public`
+   - `channels:join`
+   - `channels:read`
    - `chat:write`
    - `commands`
-   - `im:history`
-   - `im:read`
-   - `im:write`
+   - `usergroups:read`
+   - `usergroups:write`
+   - `users:read`
+3. Add these user token scopes:
+   - `usergroups:read`
+   - `usergroups:write`
+   - `users.profile:read`
+   - `users.profile:write`
    - `users:read`
 
 ### 2. Configure Environment Variables
@@ -67,14 +63,18 @@ bun wrangler secret put SLACK_BOT_TOKEN
 
 Add slash commands in your Slack app:
 
-- Command: `/hello`
+- Command: `/meetings`
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
-- Description: "Get a friendly greeting"
+- Description: "Manage meetings (admin only)"
 
-- Command: `/attendance`
+- Command: `/setrole`
 - Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
-- Description: "Track your attendance - check in, check out, view status"
-- Usage hint: `[in|out|status|help]`
+- Description: "Set a user's role (admin only)"
+- Usage hint: `[@user] [student|parent|alumni|mentor]`
+
+- Command: `/cdt`
+- Request URL: `https://sirsnap.bore.dunkirk.sh/slack`
+- Description: "Manage Component Design Teams (admin only)"
 
 #### Event Subscriptions
 
@@ -131,15 +131,11 @@ bun deploy
 ## Usage
 
 1. Install the bot in your Slack workspace
-2. Try the `/hello` command in any channel for a quick greeting
-3. Use `/attendance` commands for attendance tracking:
-   - `/attendance in` - Check in to the workspace
-   - `/attendance out` - Check out of the workspace
-   - `/attendance status` - View your current attendance status
-   - `/attendance help` - Get help with attendance commands
-4. Click the interactive buttons for quick check-in/out
-5. Mention the bot with `@sirsnap` in a channel
-6. Send a DM to the bot
+2. Sync the bot via the web dashboard admin panel
+3. Use the slash commands:
+   - `/meetings` - Open meeting management modal
+   - `/setrole [@user] [student|parent|alumni|mentor]` - Assign roles to members
+   - `/cdt` - Manage CDT assignments
 
 ## Built With
 

@@ -970,7 +970,17 @@ export function createWebApp(_env: Env) {
 				}
 
 				const name = vEvent.summary || "Imported Meeting";
-				const description = vEvent.description || "";
+				let description = vEvent.description || "";
+				
+				// Clean up redundant TeamSnap timezone strings
+				if (typeof description === "string") {
+					// Strip the entire line if it contains Arrival Time
+					description = description.replace(/^.*Arrival Time:.*\n?/gim, "");
+					// Also clean up any lingering timezone strings
+					description = description.replace(/\s*\([A-Za-z]+ Time \(US & Canada\)\)/gi, "");
+					description = description.trim();
+				}
+
 				const isCancelled =
 					name.toLowerCase().includes("[canceled]") ||
 					name.toLowerCase().includes("[cancelled]");

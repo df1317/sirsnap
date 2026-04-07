@@ -9,7 +9,7 @@ features:
   slash_commands:
     - command: /meetings
       url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
-      description: View and manage meetings
+      description: Manage meetings (admin only)
       should_escape: false
     - command: /setrole
       url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
@@ -19,22 +19,22 @@ features:
     - command: /cdt
       url: https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/api/slack
       description: Manage Component Design Teams (admin only)
-      usage_hint: create | edit <name> | list
       should_escape: false
 oauth_config:
   redirect_urls:
     - https://sirsnap.programming-aaaaaeyr6ul5biewy5byj6ykgq.workers.dev/oauth/callback
   scopes:
     user:
-      - identity.basic
-      - identity.avatar
-      - users:read
-      - users.profile:write
-      - users.profile:read
+      - usergroups:read
       - usergroups:write
+      - users.profile:read
+      - users.profile:write
+      - users:read
     bot:
-      - chat:write
+      - chat:write.public
       - channels:join
+      - channels:read
+      - chat:write
       - commands
       - usergroups:read
       - usergroups:write

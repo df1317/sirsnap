@@ -36,7 +36,7 @@
 	"assets": {
 		"directory": "./web/dist",
 		"binding": "ASSETS",
-		"not_found_handling": "none"
+		"not_found_handling": "single-page-application"
 	}
 	/**
 	 * Smart Placement

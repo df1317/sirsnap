@@ -20,6 +20,7 @@ export function AdminPage({ session }: { session: Session }) {
 	const [importing, setImporting] = useState(false);
 	const [importResult, setImportResult] = useState<string | null>(null);
 	const [savingSettings, setSavingSettings] = useState(false);
+	const [queueing, setQueueing] = useState(false);
 
 	useEffect(() => {
 		if (session.is_admin) {
@@ -95,6 +96,26 @@ export function AdminPage({ session }: { session: Session }) {
 			);
 		} finally {
 			setSavingSettings(false);
+		}
+	};
+
+	const handleQueue = async () => {
+		if (
+			!confirm(
+				"Are you sure you want to refresh all active Slack announcements? This may send notifications.",
+			)
+		)
+			return;
+		setQueueing(true);
+		try {
+			const res = await api.queueAnnouncements();
+			alert(`Successfully queued ${res.count} active meetings for refresh.`);
+		} catch (err) {
+			alert(
+				`Failed to queue announcements: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			setQueueing(false);
 		}
 	};
 
@@ -219,6 +240,40 @@ export function AdminPage({ session }: { session: Session }) {
 								disabled={savingSettings}
 							>
 								{savingSettings ? "Saving…" : "Save Settings"}
+							</Button>
+						</CardFooter>
+					</Card>
+				</div>
+
+				<div className="grid gap-6 md:grid-cols-2">
+					<Card className="border-red-200 dark:border-red-900/50">
+						<CardHeader>
+							<CardTitle className="text-base text-red-600 dark:text-red-500">
+								Developer Tools
+							</CardTitle>
+							<CardDescription>
+								Danger zone operations for debugging and recovery.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="flex flex-col space-y-1.5">
+								<h3 className="font-medium text-xs">Queue Announcements</h3>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Forces all active, non-cancelled meetings that have a Slack
+									message to be added to the pending announcements queue. This
+									will regenerate and update their Slack messages with the
+									latest data from the database.
+								</p>
+							</div>
+						</CardContent>
+						<CardFooter>
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={handleQueue}
+								disabled={queueing}
+							>
+								{queueing ? "Queueing…" : "Queue Refresh"}
 							</Button>
 						</CardFooter>
 					</Card>

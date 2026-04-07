@@ -135,6 +135,11 @@ export const api = {
 	async syncUsers(): Promise<void> {
 		await apiFetch("/api/admin/sync", { method: "POST" });
 	},
+	async queueAnnouncements(): Promise<{ count: number }> {
+		return (
+			await apiFetch("/api/admin/queue-announcements", { method: "POST" })
+		).json();
+	},
 
 	// Admin user APIs
 	async setUserCdt(userId: string, cdtId: string | null): Promise<void> {

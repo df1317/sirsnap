@@ -1085,6 +1085,60 @@ export function createWebApp(_env: Env) {
 		return c.json({ ok: true });
 	});
 
+	api.post("/admin/queue-announcements", requireAdmin(), async (c) => {
+		const now = Math.floor(Date.now() / 1000);
+		// Get all uncancelled meetings that haven't ended yet and have a message_ts
+		const activeMeetings = await c.env.DB.prepare(`
+			SELECT id 
+			FROM meeting 
+			WHERE cancelled = 0 
+				AND message_ts != '' 
+				AND channel_id != ''
+				AND (end_time IS NULL OR end_time > ?)
+		`)
+			.bind(now)
+			.all<{ id: number }>();
+
+		if (activeMeetings.results.length === 0) {
+			return c.json({ ok: true, count: 0 });
+		}
+
+		// Batch insert into pending_announcement
+		const statements = activeMeetings.results.map((m) =>
+			c.env.DB.prepare(`
+				INSERT INTO pending_announcement (meeting_id, queued_at) VALUES (?, ?)
+				ON CONFLICT (meeting_id) DO UPDATE SET queued_at = excluded.queued_at
+			`).bind(m.id, now),
+		);
+
+		// Execute in batches of 100 to avoid D1 limits
+		for (let i = 0; i < statements.length; i += 100) {
+			await c.env.DB.batch(statements.slice(i, i + 100));
+		}
+
+		return c.json({ ok: true, count: activeMeetings.results.length });
+	});
+
+	api.get("/admin/stats", requireAdmin(), async (c) => {
+		const [users, meetings, pastMeetings, pendingAnnouncements, cdts, attendance] = await Promise.all([
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM slack_user").first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting").first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM meeting WHERE end_time <= ? OR scheduled_at <= ?").bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - (3 * 60 * 60)).first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM pending_announcement").first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM cdt").first<{ count: number }>(),
+			c.env.DB.prepare("SELECT COUNT(*) as count FROM attendance").first<{ count: number }>(),
+		]);
+
+		return c.json({
+			users: users?.count ?? 0,
+			meetings: meetings?.count ?? 0,
+			pastMeetings: pastMeetings?.count ?? 0,
+			pendingAnnouncements: pendingAnnouncements?.count ?? 0,
+			cdts: cdts?.count ?? 0,
+			attendance: attendance?.count ?? 0,
+		});
+	});
+
 	api.get("/admin/settings/:key", requireAdmin(), async (c) => {
 		const key = c.req.param("key");
 		const row = await c.env.DB.prepare(

@@ -32,6 +32,8 @@ export function AdminPage({ session }: { session: Session }) {
 	const [importResult, setImportResult] = useState<string | null>(null);
 	const [savingSettings, setSavingSettings] = useState(false);
 	const [queueing, setQueueing] = useState(false);
+	const [clearingDb, setClearingDb] = useState(false);
+	const [clearDbClicks, setClearDbClicks] = useState(0);
 	const [stats, setStats] = useState<SystemStats | null>(null);
 	const [tsStats, setTsStats] = useState<TeamSnapStats | null>(null);
 
@@ -170,6 +172,29 @@ export function AdminPage({ session }: { session: Session }) {
 			);
 		} finally {
 			setQueueing(false);
+		}
+	};
+
+	const handleClearDatabase = async () => {
+		if (clearDbClicks < 2) {
+			setClearDbClicks((prev) => prev + 1);
+			return;
+		}
+
+		setClearingDb(true);
+		setClearDbClicks(0);
+		try {
+			await api.clearDatabase();
+			alert("Database cleared successfully.");
+			// Refresh stats after clearing
+			const newStats = await api.getStats();
+			setStats(newStats);
+		} catch (err) {
+			alert(
+				`Failed to clear database: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			setClearingDb(false);
 		}
 	};
 
@@ -431,7 +456,7 @@ export function AdminPage({ session }: { session: Session }) {
 					</Card>
 				</div>
 
-				<div className="grid gap-6 md:grid-cols-2">
+				<div className="grid gap-6 md:grid-cols-1">
 					<Card className="border-red-200 dark:border-red-900/50">
 						<CardHeader>
 							<CardTitle className="text-base text-red-600 dark:text-red-500">
@@ -441,8 +466,8 @@ export function AdminPage({ session }: { session: Session }) {
 								Danger zone operations for debugging and recovery.
 							</CardDescription>
 						</CardHeader>
-						<CardContent className="space-y-4">
-							<div className="flex flex-col space-y-1.5">
+						<CardContent className="space-y-6">
+							<div className="space-y-2">
 								<h3 className="font-medium text-xs">Queue Announcements</h3>
 								<p className="mt-1 text-muted-foreground text-xs">
 									Forces all active, non-cancelled meetings that have a Slack
@@ -450,18 +475,41 @@ export function AdminPage({ session }: { session: Session }) {
 									will regenerate and update their Slack messages with the
 									latest data from the database.
 								</p>
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={handleQueue}
+									disabled={queueing}
+								>
+									{queueing ? "Queueing…" : "Queue Refresh"}
+								</Button>
+							</div>
+
+							<div className="space-y-2 border-t border-red-200/50 dark:border-red-900/30 pt-4">
+								<h3 className="font-medium text-xs text-red-600 dark:text-red-500">
+									Clear Database
+								</h3>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Deletes all meetings, users, CDTs, and attendance data.
+									Workspace settings and your current session will be preserved.
+									This action cannot be undone.
+								</p>
+								<Button
+									variant="destructive"
+									size="sm"
+									onClick={handleClearDatabase}
+									disabled={clearingDb}
+								>
+									{clearingDb
+										? "Clearing Data…"
+										: clearDbClicks === 0
+											? "Clear Database (Step 1/3)"
+											: clearDbClicks === 1
+												? "Confirm Clear? (Step 2/3)"
+												: "Confirm Delete All (Step 3/3)"}
+								</Button>
 							</div>
 						</CardContent>
-						<CardFooter>
-							<Button
-								variant="destructive"
-								size="sm"
-								onClick={handleQueue}
-								disabled={queueing}
-							>
-								{queueing ? "Queueing…" : "Queue Refresh"}
-							</Button>
-						</CardFooter>
 					</Card>
 				</div>
 			</div>

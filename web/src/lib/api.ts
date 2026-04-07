@@ -304,6 +304,11 @@ export const api = {
 		return apiFetch(path, init);
 	},
 
+	// Clear Database
+	async clearDatabase(): Promise<{ ok: boolean }> {
+		return (await apiFetch("/api/admin/clear-db", { method: "POST" })).json();
+	},
+
 	// Slack channels
 	async getSlackChannels(): Promise<
 		{ id: string; name: string; is_private: boolean }[]

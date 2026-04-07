@@ -1328,6 +1328,21 @@ export function createWebApp(_env: Env) {
 		return c.json({ ok: true, count: activeMeetings.results.length });
 	});
 
+	api.post("/admin/clear-db", requireAdmin(), async (c) => {
+		// Only clear specific tables, preserving settings and sessions
+		await c.env.DB.batch([
+			c.env.DB.prepare("DELETE FROM attendance"),
+			c.env.DB.prepare("DELETE FROM pending_announcement"),
+			c.env.DB.prepare("DELETE FROM meeting"),
+			c.env.DB.prepare("DELETE FROM meeting_series"),
+			c.env.DB.prepare("DELETE FROM cdt_member"),
+			c.env.DB.prepare("DELETE FROM cdt"),
+			c.env.DB.prepare("DELETE FROM slack_user"),
+			c.env.DB.prepare("DELETE FROM slack_cache"),
+		]);
+		return c.json({ ok: true });
+	});
+
 	api.get("/admin/stats", requireAdmin(), async (c) => {
 		const [
 			users,

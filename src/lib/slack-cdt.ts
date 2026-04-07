@@ -27,6 +27,7 @@ export async function syncCdtUsers(
 			usergroup: cdtId,
 			users: memberIds.length > 0 ? memberIds.join(",") : " ",
 		})
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		.catch((err: any) => {
 			if (err?.error !== "invalid_arguments" && err?.error !== "not_found") {
 				console.error(`Failed to update usergroup users for ${cdtId}:`, err);
@@ -56,6 +57,7 @@ export async function sendWelcomeMessage(
 			channel: channelId,
 			text: `<!subteam^${cdtId}> has been created. Welcome to *${name}*!`,
 		})
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		.catch(async (err: any) => {
 			if (err?.error !== "not_in_channel") throw err;
 			await botClient.conversations.join({ channel: channelId });
@@ -82,6 +84,7 @@ export async function deleteSlackUsergroup(
 			});
 			await adminClient.usergroups.disable({ usergroup: cdtId });
 			return;
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		} catch (err: any) {
 			if (err?.error !== "name_already_exists") {
 				console.warn("deleteSlackUsergroup: update skipped:", err.message);

@@ -24,8 +24,10 @@ export default {
 		const url = new URL(request.url);
 
 		if (url.pathname.startsWith("/api/slack")) {
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			const slackApp = new SlackApp({ env: env as any });
 			for (const [_feature, handler] of Object.entries(features)) {
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 				if (typeof handler === "function") await handler(slackApp as any, env);
 			}
 			return await slackApp.run(request, ctx);

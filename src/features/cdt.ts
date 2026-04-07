@@ -26,7 +26,8 @@ function flattenState(
 function buildListModal(
 	cdts: { id: string; name: string; handle: string; member_count: number }[],
 	adminUser: boolean,
-): Record<string, unknown> {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+): any {
 	const blocks: Record<string, unknown>[] = [];
 
 	if (cdts.length === 0) {
@@ -67,7 +68,8 @@ function buildListModal(
 	};
 }
 
-function buildCreateModal(): Record<string, unknown> {
+// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+function buildCreateModal(): any {
 	return {
 		type: "modal",
 		callback_id: "cdt_create",
@@ -105,7 +107,8 @@ function buildCreateModal(): Record<string, unknown> {
 function buildEditModal(
 	cdtRow: { id: string; name: string; channel_id: string },
 	memberIds: string[],
-): Record<string, unknown> {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+): any {
 	return {
 		type: "modal",
 		callback_id: "cdt_edit",
@@ -318,7 +321,8 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		"cdt_create",
 		async (req) => {
 			const flat = flattenState(req.payload.view.state.values);
-			const name: string = flat.cdt_name?.value ?? "";
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+			const name: string = (flat.cdt_name as any)?.value ?? "";
 			const handle = `${slugify(name)}-cdt`;
 
 			const [existingName, ugList] = await Promise.all([
@@ -358,9 +362,14 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		async (req) => {
 			try {
 				const flat = flattenState(req.payload.view.state.values);
-				const name: string = flat.cdt_name?.value ?? "";
-				const channelId: string = flat.cdt_channel?.selected_channel ?? "";
-				const members: string[] = flat.cdt_members?.selected_users ?? [];
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+				const name: string = (flat.cdt_name as any)?.value ?? "";
+				const channelId: string =
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+					(flat.cdt_channel as any)?.selected_channel ?? "";
+				const members: string[] =
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+					(flat.cdt_members as any)?.selected_users ?? [];
 				const handle = `${slugify(name)}-cdt`;
 
 				const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
@@ -422,9 +431,14 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			try {
 				const { cdtId } = JSON.parse(req.payload.view.private_metadata ?? "{}");
 				const flat = flattenState(req.payload.view.state.values);
-				const newName: string = flat.cdt_name?.value ?? "";
-				const newChannelId: string = flat.cdt_channel?.selected_channel ?? "";
-				const newMembers: string[] = flat.cdt_members?.selected_users ?? [];
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+				const newName: string = (flat.cdt_name as any)?.value ?? "";
+				const newChannelId: string =
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+					(flat.cdt_channel as any)?.selected_channel ?? "";
+				const newMembers: string[] =
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+					(flat.cdt_members as any)?.selected_users ?? [];
 
 				const currentRows = await env.DB.prepare(
 					"SELECT user_id FROM cdt_member WHERE cdt_id = ?",

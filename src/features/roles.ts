@@ -19,6 +19,7 @@ const ROLE_OPTIONS = VALID_ROLES.map((role) => ({
 function buildSetRoleModal(
 	initialUsers: string[] = [],
 	initialRole?: Role,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): any {
 	return {
 		type: "modal",

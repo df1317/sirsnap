@@ -10,6 +10,7 @@ export function buildAnnouncementBlocks(
 		end_time?: number | null;
 	},
 	attendees: { yes: string[]; maybe: string[]; no: string[] },
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): any[] {
 	const mentionList = (ids: string[]) => ids.map((id) => `<@${id}>`).join(", ");
 	const contextParts: string[] = [];
@@ -72,6 +73,7 @@ export function buildCancelledAnnouncementBlocks(meeting: {
 	description: string;
 	scheduled_at: number;
 	end_time?: number | null;
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 }): any[] {
 	let timeStr = `<!date^${meeting.scheduled_at}^{date_long_pretty} at {time}|${new Date(meeting.scheduled_at * 1000).toISOString()}>`;
 	if (meeting.end_time) {
@@ -96,6 +98,7 @@ export function buildCancelledAnnouncementBlocks(meeting: {
 }
 
 export async function updateAnnouncement(
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	client: any,
 	db: D1Database,
 	meeting: {

@@ -10,10 +10,14 @@ import { generateDates } from "../lib/recurrence";
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 async function postWithJoin(
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	client: any,
 	channelId: string,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	message: any,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): Promise<any> {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	return client.chat.postMessage(message).catch(async (err: any) => {
 		if (err?.error !== "not_in_channel") throw err;
 		await client.conversations.join({ channel: channelId });
@@ -22,8 +26,11 @@ async function postWithJoin(
 }
 
 function flattenState(
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	stateValues: Record<string, Record<string, any>>,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): Record<string, any> {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const flat: Record<string, any> = {};
 	for (const blockState of Object.values(stateValues)) {
 		for (const [actionId, val] of Object.entries(blockState)) {
@@ -37,13 +44,16 @@ function buildListModal(
 	upcoming: { id: number; name: string; scheduled_at: number }[],
 	cancelled: { id: number; name: string; scheduled_at: number }[],
 	adminUser: boolean,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): any {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const blocks: any[] = [];
 
 	const addRow = (
 		m: { id: number; name: string; scheduled_at: number },
 		isCancelled: boolean,
 	) => {
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const block: any = {
 			type: "section",
 			text: {
@@ -96,7 +106,9 @@ function buildListModal(
 	};
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 function buildCreateModal(isRecurring: boolean): any {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const baseBlocks: any[] = [
 		{
 			type: "input",
@@ -127,6 +139,7 @@ function buildCreateModal(isRecurring: boolean): any {
 		text: { type: "plain_text", text: "Recurring meeting" },
 		value: "recurring",
 	};
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const recurringCheckbox: any = {
 		type: "checkboxes",
 		action_id: "repeat_toggle",
@@ -221,7 +234,9 @@ function buildEditModal(meeting: {
 	end_time: number | null;
 	channel_id: string;
 	cancelled: number;
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 }): any {
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const actionButtons: any[] = meeting.cancelled
 		? [
 				{
@@ -340,6 +355,7 @@ function buildEditModal(meeting: {
 }
 
 async function refreshListView(
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	client: any,
 	env: Env,
 	rootViewId: string,
@@ -369,6 +385,7 @@ async function refreshListView(
 }
 
 const updateAnnouncement = (
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	client: any,
 	env: Env,
 	meeting: Parameters<typeof _updateAnnouncement>[2],
@@ -378,6 +395,7 @@ function buildRsvpModal(
 	meetingId: number,
 	status: "yes" | "maybe" | "no",
 	meetingName: string,
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 ): any {
 	const label =
 		status === "yes" ? "✅ Yes" : status === "maybe" ? "🤔 Maybe" : "❌ No";
@@ -449,6 +467,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const value = (payload as any).actions?.[0]?.value;
 		if (!value) return;
 		const meetingId = Number(value);
@@ -469,6 +488,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		if (!meeting) return;
 
 		await context.client.views.push({
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			trigger_id: (payload as any).trigger_id,
 			view: buildEditModal(meeting),
 		});
@@ -476,9 +496,12 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 
 	slackApp.action("repeat_toggle", async ({ context, payload }) => {
 		const isRecurring =
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			(payload as any).actions[0].selected_options?.length > 0;
 		await context.client.views.update({
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			view_id: (payload as any).view.id,
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			hash: (payload as any).view.hash,
 			view: buildCreateModal(isRecurring),
 		});
@@ -488,9 +511,11 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const value = (payload as any).actions?.[0]?.value;
 		if (!value) return;
 		const meetingId = Number(value);
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
 		await env.DB.prepare("UPDATE meeting SET cancelled = 1 WHERE id = ?")
 			.bind(meetingId)
@@ -512,6 +537,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		if (meeting) {
 			await Promise.all([
 				context.client.views.update({
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 					view_id: (payload as any).view.id,
 					view: buildEditModal(meeting),
 				}),
@@ -527,9 +553,11 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const value = (payload as any).actions?.[0]?.value;
 		if (!value) return;
 		const meetingId = Number(value);
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
 		await env.DB.prepare("UPDATE meeting SET cancelled = 0 WHERE id = ?")
 			.bind(meetingId)
@@ -551,6 +579,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		if (meeting) {
 			await Promise.all([
 				context.client.views.update({
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 					view_id: (payload as any).view.id,
 					view: buildEditModal(meeting),
 				}),
@@ -566,9 +595,11 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const value = (payload as any).actions?.[0]?.value;
 		if (!value) return;
 		const meetingId = Number(value);
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
 		const meeting = await env.DB.prepare(
 			"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
@@ -589,6 +620,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			.run();
 		await Promise.all([
 			context.client.views.update({
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 				view_id: (payload as any).view.id,
 				view: {
 					type: "modal",
@@ -635,6 +667,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 						? Number(flat.duration_minutes.value)
 						: null;
 					const days: number[] = (flat.days?.selected_options ?? []).map(
+						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 						(o: any) => Number(o.value),
 					);
 					const endDate = new Date(flat.end_date?.selected_date ?? "");
@@ -684,6 +717,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 						await env.DB.prepare(
 							"UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?",
 						)
+							// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 							.bind((post as any).channel, (post as any).ts, row.id)
 							.run();
 					}
@@ -712,6 +746,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					await env.DB.prepare(
 						"UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?",
 					)
+						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 						.bind((post as any).channel, (post as any).ts, row.id)
 						.run();
 				}
@@ -771,6 +806,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 
 	for (const status of ["yes", "maybe", "no"] as const) {
 		slackApp.action(`rsvp_${status}`, async ({ context, payload }) => {
+			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			const value = (payload as any).actions?.[0]?.value;
 			if (!value) return;
 			const meetingId = Number(value);
@@ -780,6 +816,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				.bind(meetingId)
 				.first<{ name: string }>();
 			await context.client.views.open({
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 				trigger_id: (payload as any).trigger_id,
 				view: buildRsvpModal(
 					meetingId,

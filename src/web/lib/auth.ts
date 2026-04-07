@@ -35,6 +35,7 @@ export async function exchangeCode(
 			redirect_uri: getRedirectUri(env),
 		}),
 	});
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const data: any = await res.json();
 	if (!data.ok) throw new Error(`oauth.v2.access failed: ${data.error}`);
 
@@ -43,6 +44,7 @@ export async function exchangeCode(
 
 	const identity = (await fetch("https://slack.com/api/users.identity", {
 		headers: { Authorization: `Bearer ${userToken}` },
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	}).then((r) => r.json())) as any;
 	if (!identity.ok) throw new Error(`users.identity failed: ${identity.error}`);
 

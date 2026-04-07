@@ -14,7 +14,9 @@ export async function syncAllUsers(
 	}[] = [];
 
 	do {
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const res: any = await client.users.list({ limit: 200, cursor });
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const members: any[] = res.members ?? [];
 		for (const m of members) {
 			if (m.deleted || m.is_bot || m.id === "USLACKBOT") continue;

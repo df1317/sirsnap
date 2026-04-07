@@ -6,7 +6,13 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": [
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"web/src/**/*.ts",
+			"web/src/**/*.tsx"
+		]
 	},
 	"formatter": {
 		"enabled": true,

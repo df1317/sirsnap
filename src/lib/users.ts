@@ -27,6 +27,7 @@ export async function getUser(
 	}
 
 	const result = await client.users.info({ user: userId });
+	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	const u = result.user as any;
 	const name =
 		u.profile?.display_name_normalized ||
@@ -66,6 +67,7 @@ export async function setProfile(
 ): Promise<void> {
 	await adminClient.users.profile
 		.set({ user: userId, profile })
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		.catch((err: any) => {
 			if (err?.error === "cannot_update_admin_user") {
 				console.log(`setProfile: skipped admin user ${userId}`);

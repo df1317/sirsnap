@@ -40,6 +40,7 @@ export function createWebApp(_env: Env) {
 	api.use("*", sessionMiddleware);
 
 	api.get("/me", requireSession(), (c) => {
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const s = c.get("session")!;
 		return c.json({
 			user_id: s.user_id,
@@ -91,6 +92,7 @@ export function createWebApp(_env: Env) {
 	});
 
 	api.get("/meetings", requireSession(), async (c) => {
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const session = c.get("session")!;
 		const now = Math.floor(Date.now() / 1000);
 		const rows = await c.env.DB.prepare(
@@ -119,6 +121,7 @@ export function createWebApp(_env: Env) {
 	});
 
 	api.get("/meetings/past", requireSession(), async (c) => {
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const session = c.get("session")!;
 		const now = Math.floor(Date.now() / 1000);
 		const rows = await c.env.DB.prepare(
@@ -145,6 +148,7 @@ export function createWebApp(_env: Env) {
 	});
 
 	api.post("/rsvp/:meetingId", requireSession(), async (c) => {
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const session = c.get("session")!;
 		const meetingId = Number(c.req.param("meetingId"));
 		const { status, note = "" } = await c.req.json<{

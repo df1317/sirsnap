@@ -33,6 +33,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "../components/ui/popover";
+import { Select } from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
 import {
 	Sheet,
@@ -47,7 +48,6 @@ import {
 	TabsTrigger,
 } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
-import { Select } from "../components/ui/select";
 import {
 	type AdminMeeting,
 	api,
@@ -281,7 +281,7 @@ function CreateMeetingDialog({
 									onChange={(e) => setTime(e.target.value)}
 									className="h-8 flex-1 px-2 text-xs"
 								/>
-								<span className="text-muted-foreground text-xs px-1">-</span>
+								<span className="px-1 text-muted-foreground text-xs">-</span>
 								<Input
 									type="time"
 									value={endTime}
@@ -813,7 +813,7 @@ function AdminMeetingsView() {
 								<Select
 									value={bulkDuration}
 									onChange={(e) => setBulkDuration(e.target.value)}
-									className="h-7 border-none text-xs w-28 bg-transparent focus:ring-0"
+									className="h-7 w-28 border-none bg-transparent text-xs focus:ring-0"
 								>
 									<option value="30">30 min</option>
 									<option value="45">45 min</option>

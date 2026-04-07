@@ -2,8 +2,8 @@ declare const __COMMIT_HASH__: string;
 
 export function Footer() {
 	return (
-		<footer className="mt-auto py-6 border-t border-border/60 bg-white/40 backdrop-blur-sm">
-			<div className="max-w-5xl mx-auto px-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-[13px] text-muted-foreground">
+		<footer className="mt-auto border-border/60 border-t bg-white/40 py-6 backdrop-blur-sm">
+			<div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-5 text-[13px] text-muted-foreground sm:flex-row">
 				<div className="flex items-center gap-1.5">
 					<span>Made with</span>
 					<span className="text-red-500">❤️</span>
@@ -14,7 +14,7 @@ export function Footer() {
 						href={`https://github.com/df1317/sirsnap/commit/${__COMMIT_HASH__}`}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="hover:text-foreground transition-colors font-mono"
+						className="font-mono transition-colors hover:text-foreground"
 					>
 						{__COMMIT_HASH__}
 					</a>

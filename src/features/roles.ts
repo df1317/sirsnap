@@ -1,8 +1,8 @@
-import { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
+import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import { SlackAPIClient } from "slack-web-api-client";
-import { setProfile } from "../lib/users";
 import type { Env } from "../index";
 import { isAdmin } from "../lib/admin";
+import { setProfile } from "../lib/users";
 
 const ROLE_FIELD_ID = "Xf040NQZR2F6";
 const VALID_ROLES = ["student", "parent", "alumni", "mentor"] as const;

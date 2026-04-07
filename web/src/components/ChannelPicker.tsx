@@ -1,10 +1,10 @@
+import { Hash, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Hash, Lock } from "lucide-react";
-import { cn } from "../lib/utils";
 
 export function ChannelPicker({
 	value,
@@ -40,7 +40,7 @@ export function ChannelPicker({
 			const found = channels.find((c) => c.id === value);
 			if (found) setSelected(found);
 		}
-	}, [channels.length, value, selected]);
+	}, [channels.length, value, selected, channels.find]);
 
 	useEffect(() => {
 		if (open && inputRef.current) inputRef.current.focus();
@@ -63,7 +63,7 @@ export function ChannelPicker({
 				<Button
 					variant="outline"
 					className={cn(
-						"flex w-full justify-start text-left font-normal h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[empty=true]:text-muted-foreground",
+						"flex h-9 w-full justify-start rounded-md border border-input bg-transparent px-3 py-1 text-left font-normal text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[empty=true]:text-muted-foreground",
 						className,
 					)}
 					data-empty={!selected}
@@ -83,7 +83,7 @@ export function ChannelPicker({
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-64 p-0 pointer-events-auto"
+				className="pointer-events-auto w-64 p-0"
 				align="start"
 				onWheel={(e) => e.stopPropagation()}
 			>
@@ -93,11 +93,11 @@ export function ChannelPicker({
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 						placeholder="Search channels…"
-						className="h-8 text-xs mb-1"
+						className="mb-1 h-8 text-xs"
 					/>
 					<div className="max-h-[200px] overflow-y-auto overscroll-contain">
 						{filtered.length === 0 && (
-							<p className="px-2 py-1.5 text-xs text-muted-foreground">
+							<p className="px-2 py-1.5 text-muted-foreground text-xs">
 								No channels found.
 							</p>
 						)}
@@ -106,9 +106,9 @@ export function ChannelPicker({
 								key={ch.id}
 								type="button"
 								className={cn(
-									"w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left hover:bg-muted transition-colors rounded-sm",
+									"flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
 									selected?.id === ch.id &&
-										"bg-accent text-accent-foreground font-medium",
+										"bg-accent font-medium text-accent-foreground",
 								)}
 								onClick={() => select(ch)}
 							>

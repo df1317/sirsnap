@@ -1,25 +1,25 @@
-import { useState, useEffect } from "react";
-import {
-	api,
-	type Session,
-	type User,
-	type Cdt,
-	type UserMeeting,
-} from "../lib/api";
-import { Layout } from "../components/Layout";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useEffect, useState } from "react";
 import { DataTable } from "../components/data-table";
+import { Layout } from "../components/Layout";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
+import { Select } from "../components/ui/select";
+import { Separator } from "../components/ui/separator";
 import {
 	Sheet,
 	SheetContent,
 	SheetHeader,
 	SheetTitle,
 } from "../components/ui/sheet";
-import { Select } from "../components/ui/select";
-import { Separator } from "../components/ui/separator";
-import { type ColumnDef } from "@tanstack/react-table";
+import {
+	api,
+	type Cdt,
+	type Session,
+	type User,
+	type UserMeeting,
+} from "../lib/api";
 
 const ROLES = ["student", "mentor", "parent", "alumni"] as const;
 const roleVariant: Record<string, "student" | "mentor" | "parent" | "alumni"> =
@@ -59,7 +59,7 @@ const columns: ColumnDef<User, unknown>[] = [
 					</Avatar>
 					<span className="font-medium">{u.name}</span>
 					{u.is_admin && (
-						<Badge variant="outline" className="text-[0.6rem] h-4 px-1.5">
+						<Badge variant="outline" className="h-4 px-1.5 text-[0.6rem]">
 							Admin
 						</Badge>
 					)}
@@ -124,7 +124,7 @@ function TeamListView({
 			.getUserMeetings(selectedUser.user_id)
 			.then(setUserMeetings)
 			.finally(() => setMeetingsLoading(false));
-	}, [selectedUser?.user_id]);
+	}, [selectedUser?.user_id, selectedUser]);
 
 	const handleRoleChange = async (userId: string, role: string) => {
 		if (!setUsers) return;
@@ -229,7 +229,7 @@ function TeamListView({
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<span className="text-xs text-muted-foreground">
+				<span className="text-muted-foreground text-xs">
 					{users.length} members
 				</span>
 				{isAdmin && (
@@ -237,7 +237,7 @@ function TeamListView({
 						{syncDone && (
 							<Badge
 								variant="outline"
-								className="text-emerald-600 border-emerald-200 bg-emerald-50"
+								className="border-emerald-200 bg-emerald-50 text-emerald-600"
 							>
 								Synced successfully
 							</Badge>
@@ -250,8 +250,8 @@ function TeamListView({
 			</div>
 
 			{isAdmin && selectedRows.length > 0 && (
-				<div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-					<span className="text-xs font-medium">
+				<div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+					<span className="font-medium text-xs">
 						{selectedRows.length} selected
 					</span>
 					<Separator orientation="vertical" className="h-5" />
@@ -259,7 +259,7 @@ function TeamListView({
 						<Select
 							value={bulkRole}
 							onChange={(e) => setBulkRole(e.target.value)}
-							className="h-7 text-xs w-28"
+							className="h-7 w-28 text-xs"
 						>
 							<option value="">Set role…</option>
 							{ROLES.map((r) => (
@@ -283,7 +283,7 @@ function TeamListView({
 						<Select
 							value={bulkCdt}
 							onChange={(e) => setBulkCdt(e.target.value)}
-							className="h-7 text-xs w-36"
+							className="h-7 w-36 text-xs"
 						>
 							<option value="">Set CDT…</option>
 							{cdts.map((cdt) => (
@@ -305,7 +305,7 @@ function TeamListView({
 					<Button
 						size="sm"
 						variant="ghost"
-						className="h-7 text-xs ml-auto"
+						className="ml-auto h-7 text-xs"
 						onClick={() => setSelectedRows([])}
 					>
 						Clear
@@ -339,7 +339,7 @@ function TeamListView({
 										{selectedUser.is_admin && (
 											<Badge
 												variant="outline"
-												className="mt-1 text-[0.6rem] h-4 px-1.5"
+												className="mt-1 h-4 px-1.5 text-[0.6rem]"
 											>
 												Admin
 											</Badge>
@@ -348,16 +348,20 @@ function TeamListView({
 								</div>
 							</SheetHeader>
 
-							<div className="px-6 space-y-4">
+							<div className="space-y-4 px-6">
 								<Separator />
 
 								{isAdmin ? (
 									<>
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium text-muted-foreground">
+											<label
+												htmlFor="user-role-select"
+												className="font-medium text-muted-foreground text-xs"
+											>
 												Role
 											</label>
 											<Select
+												id="user-role-select"
 												value={selectedUser.role ?? ""}
 												onChange={(e) =>
 													handleRoleChange(selectedUser.user_id, e.target.value)
@@ -374,10 +378,14 @@ function TeamListView({
 										</div>
 
 										<div className="space-y-1.5">
-											<label className="text-xs font-medium text-muted-foreground">
+											<label
+												htmlFor="user-cdt-select"
+												className="font-medium text-muted-foreground text-xs"
+											>
 												CDT
 											</label>
 											<Select
+												id="user-cdt-select"
 												value={selectedUser.cdt_id ?? ""}
 												onChange={(e) =>
 													handleCdtChange(selectedUser.user_id, e.target.value)
@@ -396,9 +404,9 @@ function TeamListView({
 								) : (
 									<div className="flex gap-4">
 										<div className="space-y-1">
-											<label className="text-xs font-medium text-muted-foreground">
+											<span className="block font-medium text-muted-foreground text-xs">
 												Role
-											</label>
+											</span>
 											<div>
 												{selectedUser.role ? (
 													<Badge variant={roleVariant[selectedUser.role]}>
@@ -406,23 +414,23 @@ function TeamListView({
 															selectedUser.role.slice(1)}
 													</Badge>
 												) : (
-													<span className="text-sm text-muted-foreground">
+													<span className="text-muted-foreground text-sm">
 														—
 													</span>
 												)}
 											</div>
 										</div>
 										<div className="space-y-1">
-											<label className="text-xs font-medium text-muted-foreground">
+											<span className="block font-medium text-muted-foreground text-xs">
 												CDT
-											</label>
+											</span>
 											<div>
 												{selectedUser.cdt_name ? (
-													<span className="text-sm font-medium">
+													<span className="font-medium text-sm">
 														{selectedUser.cdt_name}
 													</span>
 												) : (
-													<span className="text-sm text-muted-foreground">
+													<span className="text-muted-foreground text-sm">
 														—
 													</span>
 												)}
@@ -434,11 +442,11 @@ function TeamListView({
 								<Separator />
 
 								<div className="space-y-2">
-									<p className="text-xs font-medium">Meeting Attendance</p>
+									<p className="font-medium text-xs">Meeting Attendance</p>
 									{meetingsLoading ? (
-										<p className="text-xs text-muted-foreground">Loading…</p>
+										<p className="text-muted-foreground text-xs">Loading…</p>
 									) : userMeetings.length === 0 ? (
-										<p className="text-xs text-muted-foreground">
+										<p className="text-muted-foreground text-xs">
 											No attendance records.
 										</p>
 									) : (
@@ -456,7 +464,7 @@ function TeamListView({
 														className="flex items-start justify-between gap-2"
 													>
 														<div>
-															<p className="text-xs font-medium leading-snug">
+															<p className="font-medium text-xs leading-snug">
 																{m.name}
 															</p>
 															<p className="text-[0.65rem] text-muted-foreground">
@@ -464,7 +472,7 @@ function TeamListView({
 															</p>
 														</div>
 														<span
-															className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] font-medium shrink-0 ${statusColor[m.status] ?? ""}`}
+															className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 font-medium text-[0.6rem] ${statusColor[m.status] ?? ""}`}
 														>
 															{m.status}
 														</span>
@@ -510,10 +518,10 @@ export function TeamPage({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="space-y-4 animate-pulse">
-					<div className="h-6 w-16 bg-muted rounded"></div>
-					<div className="h-4 w-48 bg-muted rounded"></div>
-					<div className="h-64 w-full bg-muted rounded mt-4"></div>
+				<div className="animate-pulse space-y-4">
+					<div className="h-6 w-16 rounded bg-muted"></div>
+					<div className="h-4 w-48 rounded bg-muted"></div>
+					<div className="mt-4 h-64 w-full rounded bg-muted"></div>
 				</div>
 			</Layout>
 		);
@@ -522,8 +530,8 @@ export function TeamPage({ session }: { session: Session }) {
 		<Layout session={session}>
 			<div className="space-y-6">
 				<div>
-					<h1 className="text-lg font-semibold tracking-tight">Team</h1>
-					<p className="text-sm text-muted-foreground mt-0.5">
+					<h1 className="font-semibold text-lg tracking-tight">Team</h1>
+					<p className="mt-0.5 text-muted-foreground text-sm">
 						All team members.
 					</p>
 				</div>

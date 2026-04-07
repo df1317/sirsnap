@@ -1,8 +1,8 @@
-import { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
+import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import { SlackAPIClient } from "slack-web-api-client";
 import type { Env } from "../index";
-import { isAdmin, setProfile } from "../lib/users";
 import { CDT_FIELD_ID, deleteSlackUsergroup } from "../lib/slack-cdt";
+import { isAdmin, setProfile } from "../lib/users";
 
 function slugify(name: string): string {
 	return name
@@ -12,9 +12,9 @@ function slugify(name: string): string {
 }
 
 function flattenState(
-	stateValues: Record<string, Record<string, any>>,
-): Record<string, any> {
-	const flat: Record<string, any> = {};
+	stateValues: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+	const flat: Record<string, unknown> = {};
 	for (const blockState of Object.values(stateValues)) {
 		for (const [actionId, val] of Object.entries(blockState)) {
 			flat[actionId] = val;
@@ -26,8 +26,8 @@ function flattenState(
 function buildListModal(
 	cdts: { id: string; name: string; handle: string; member_count: number }[],
 	adminUser: boolean,
-): any {
-	const blocks: any[] = [];
+): Record<string, unknown> {
+	const blocks: Record<string, unknown>[] = [];
 
 	if (cdts.length === 0) {
 		blocks.push({
@@ -36,7 +36,7 @@ function buildListModal(
 		});
 	} else {
 		for (const c of cdts) {
-			const block: any = {
+			const block: Record<string, unknown> = {
 				type: "section",
 				text: {
 					type: "mrkdwn",
@@ -67,7 +67,7 @@ function buildListModal(
 	};
 }
 
-function buildCreateModal(): any {
+function buildCreateModal(): Record<string, unknown> {
 	return {
 		type: "modal",
 		callback_id: "cdt_create",
@@ -105,7 +105,7 @@ function buildCreateModal(): any {
 function buildEditModal(
 	cdtRow: { id: string; name: string; channel_id: string },
 	memberIds: string[],
-): any {
+): Record<string, unknown> {
 	return {
 		type: "modal",
 		callback_id: "cdt_edit",
@@ -206,7 +206,9 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
-		const value = (payload as any).actions?.[0]?.value;
+		const payloadActions = (payload as { actions?: { value: string }[] })
+			.actions;
+		const value = payloadActions?.[0]?.value;
 		if (!value) return;
 		const cdtId = String(value);
 
@@ -225,7 +227,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			.all<{ user_id: string }>();
 
 		await context.client.views.push({
-			trigger_id: (payload as any).trigger_id,
+			trigger_id: (payload as { trigger_id: string }).trigger_id,
 			view: buildEditModal(
 				cdtRow,
 				members.results.map((r) => r.user_id),
@@ -237,7 +239,9 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const userId = context.userId;
 		if (!userId) return;
 		if (!(await isAdmin(env.DB, context.client, userId))) return;
-		const value = (payload as any).actions?.[0]?.value;
+		const payloadActions = (payload as { actions?: { value: string }[] })
+			.actions;
+		const value = payloadActions?.[0]?.value;
 		if (!value) return;
 		const cdtId = String(value);
 
@@ -280,10 +284,11 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			}>(),
 		]);
 
-		const rootViewId = (payload as any).view.root_view_id;
+		const rootViewId = (payload as { view: { root_view_id: string } }).view
+			.root_view_id;
 		await Promise.all([
 			context.client.views.update({
-				view_id: (payload as any).view.id,
+				view_id: (payload as { view: { id: string } }).view.id,
 				view: {
 					type: "modal",
 					callback_id: "cdt_deleted",
@@ -314,7 +319,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		async (req) => {
 			const flat = flattenState(req.payload.view.state.values);
 			const name: string = flat.cdt_name?.value ?? "";
-			const handle = slugify(name) + "-cdt";
+			const handle = `${slugify(name)}-cdt`;
 
 			const [existingName, ugList] = await Promise.all([
 				env.DB.prepare("SELECT id FROM cdt WHERE name = ?").bind(name).first(),
@@ -331,7 +336,9 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				};
 			}
 
-			const usergroups: any[] = (ugList as any).usergroups ?? [];
+			const usergroups =
+				(ugList as { usergroups?: { handle?: string; name?: string }[] })
+					.usergroups ?? [];
 			const existingUg = usergroups.find(
 				(ug) => ug.handle === handle || ug.name === name,
 			);
@@ -354,7 +361,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				const name: string = flat.cdt_name?.value ?? "";
 				const channelId: string = flat.cdt_channel?.selected_channel ?? "";
 				const members: string[] = flat.cdt_members?.selected_users ?? [];
-				const handle = slugify(name) + "-cdt";
+				const handle = `${slugify(name)}-cdt`;
 
 				const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
 
@@ -363,7 +370,8 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					handle,
 					channels: channelId,
 				});
-				const usergroupId = (ugRes as any).usergroup.id;
+				const usergroupId = (ugRes as { usergroup: { id: string } }).usergroup
+					.id;
 
 				await env.DB.prepare(
 					"INSERT INTO cdt (id, name, handle, channel_id) VALUES (?, ?, ?, ?)",
@@ -392,8 +400,9 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 						channel: channelId,
 						text: `<!subteam^${usergroupId}> has been created. Welcome to *${name}*!`,
 					})
-					.catch(async (err: any) => {
-						if (err?.error !== "not_in_channel") throw err;
+					.catch(async (err: unknown) => {
+						const error = err as { error?: string };
+						if (error?.error !== "not_in_channel") throw err;
 						await req.context.client.conversations.join({ channel: channelId });
 						await req.context.client.chat.postMessage({
 							channel: channelId,

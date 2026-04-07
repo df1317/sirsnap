@@ -1,8 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { type Session } from "../lib/api";
-import { Button } from "./ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
+import type { Session } from "../lib/api";
 import { Footer } from "./Footer";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button } from "./ui/button";
 
 export function Layout({
 	session,
@@ -21,9 +21,9 @@ export function Layout({
 	const navLink = (href: string, label: string) => (
 		<Link
 			to={href}
-			className={`text-[13px] px-3 py-1.5 rounded-md transition-colors ${
+			className={`rounded-md px-3 py-1.5 text-[13px] transition-colors ${
 				isActive(href)
-					? "text-foreground font-medium"
+					? "font-medium text-foreground"
 					: "text-muted-foreground hover:text-foreground"
 			}`}
 		>
@@ -32,15 +32,15 @@ export function Layout({
 	);
 
 	return (
-		<div className="min-h-screen bg-background flex flex-col">
-			<header className="sticky top-0 z-50 w-full border-b border-border/60 bg-white/80 backdrop-blur-md">
-				<div className="max-w-5xl mx-auto px-5 h-[52px] flex items-center justify-between">
+		<div className="flex min-h-screen flex-col bg-background">
+			<header className="sticky top-0 z-50 w-full border-border/60 border-b bg-white/80 backdrop-blur-md">
+				<div className="mx-auto flex h-[52px] max-w-5xl items-center justify-between px-5">
 					<div className="flex items-center gap-5">
-						<Link to="/" className="flex items-center gap-2 shrink-0">
+						<Link to="/" className="flex shrink-0 items-center gap-2">
 							<img
 								src="/favicon-32x32.png"
 								alt="Sirsnap Logo"
-								className="w-6 h-6 rounded-md object-contain"
+								className="h-6 w-6 rounded-md object-contain"
 							/>
 							<span className="font-semibold text-[13px] tracking-tight">
 								Sirsnap
@@ -61,7 +61,7 @@ export function Layout({
 								{session.name[0]}
 							</AvatarFallback>
 						</Avatar>
-						<span className="text-[13px] text-muted-foreground hidden sm:block">
+						<span className="hidden text-[13px] text-muted-foreground sm:block">
 							{session.name}
 						</span>
 						<Button
@@ -71,7 +71,7 @@ export function Layout({
 								await fetch("/api/auth/logout", { method: "POST" });
 								window.location.href = "/";
 							}}
-							className="text-[13px] text-muted-foreground h-7 px-2"
+							className="h-7 px-2 text-[13px] text-muted-foreground"
 						>
 							Sign out
 						</Button>
@@ -79,7 +79,7 @@ export function Layout({
 				</div>
 			</header>
 
-			<main className="max-w-5xl mx-auto px-5 py-8 w-full flex-grow">
+			<main className="mx-auto w-full max-w-5xl flex-grow px-5 py-8">
 				{children}
 			</main>
 

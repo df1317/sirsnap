@@ -1,17 +1,20 @@
-import { useState, useEffect } from "react";
-import {
-	api,
-	type Session,
-	type User,
-	type Cdt,
-	type CdtDetail,
-} from "../lib/api";
+import { Pencil, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChannelPicker } from "../components/ChannelPicker";
 import { Layout } from "../components/Layout";
+import { UserPicker } from "../components/UserPicker";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Card } from "../components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 import { Separator } from "../components/ui/separator";
 import {
 	Table,
@@ -27,16 +30,13 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "../components/ui/tabs";
-import { ChannelPicker } from "../components/ChannelPicker";
-import { UserPicker } from "../components/UserPicker";
 import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-	DialogFooter,
-} from "../components/ui/dialog";
-import { Trash2, Pencil } from "lucide-react";
+	api,
+	type Cdt,
+	type CdtDetail,
+	type Session,
+	type User,
+} from "../lib/api";
 
 const roleVariant: Record<string, "student" | "mentor" | "parent" | "alumni"> =
 	{
@@ -47,10 +47,10 @@ const roleVariant: Record<string, "student" | "mentor" | "parent" | "alumni"> =
 	};
 
 const slugify = (name: string) =>
-	name
+	`${name
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/(^-|-$)/g, "") + "-cdt";
+		.replace(/(^-|-$)/g, "")}-cdt`;
 
 function UserRow({ user, showRole }: { user: User; showRole: boolean }) {
 	return (
@@ -59,8 +59,8 @@ function UserRow({ user, showRole }: { user: User; showRole: boolean }) {
 				<AvatarImage src={user.avatar_url} />
 				<AvatarFallback>{user.name[0]}</AvatarFallback>
 			</Avatar>
-			<div className="flex-1 min-w-0">
-				<p className="text-sm font-medium truncate">{user.name}</p>
+			<div className="min-w-0 flex-1">
+				<p className="truncate font-medium text-sm">{user.name}</p>
 			</div>
 			{showRole && user.role ? (
 				<Badge variant={roleVariant[user.role]}>
@@ -68,7 +68,7 @@ function UserRow({ user, showRole }: { user: User; showRole: boolean }) {
 				</Badge>
 			) : (
 				!showRole && (
-					<span className="text-xs text-muted-foreground shrink-0">—</span>
+					<span className="shrink-0 text-muted-foreground text-xs">—</span>
 				)
 			)}
 		</div>
@@ -88,8 +88,8 @@ function Group({
 }) {
 	return (
 		<div>
-			<div className="px-4 py-2 bg-muted/30">
-				<p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+			<div className="bg-muted/30 px-4 py-2">
+				<p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-widest">
 					{name} · {count}
 				</p>
 			</div>
@@ -120,7 +120,7 @@ function CdtsListView({ users, cdts }: { users: User[]; cdts: Cdt[] }) {
 	return (
 		<Card className="overflow-hidden py-0">
 			{!hasAny && (
-				<p className="text-sm text-muted-foreground px-4 py-4">
+				<p className="px-4 py-4 text-muted-foreground text-sm">
 					No team members assigned to CDTs yet.
 				</p>
 			)}
@@ -187,8 +187,8 @@ function AdminCdtsView() {
 			setNewHandle("");
 			setNewChannelId("");
 			setNewMembers([]);
-		} catch (e: any) {
-			setCreateError(e.message || "An error occurred");
+		} catch (e: unknown) {
+			setCreateError((e as Error).message || "An error occurred");
 		} finally {
 			setCreating(false);
 		}
@@ -233,8 +233,8 @@ function AdminCdtsView() {
 			await refreshCdts();
 			setEditOpen(false);
 			setEditDetail(null);
-		} catch (e: any) {
-			setEditError(e.message || "An error occurred while saving");
+		} catch (e: unknown) {
+			setEditError((e as Error).message || "An error occurred while saving");
 		} finally {
 			setSaving(false);
 		}
@@ -248,7 +248,7 @@ function AdminCdtsView() {
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<span className="text-xs text-muted-foreground">
+				<span className="text-muted-foreground text-xs">
 					{cdts.length} CDTs
 				</span>
 				<Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -256,14 +256,14 @@ function AdminCdtsView() {
 				</Button>
 			</div>
 
-			<div className="rounded-md border overflow-hidden">
+			<div className="overflow-hidden rounded-md border">
 				<Table>
 					<TableHeader>
 						<TableRow>
 							<TableHead className="px-4">Name</TableHead>
 							<TableHead className="px-4">Handle</TableHead>
 							<TableHead className="px-4">Members</TableHead>
-							<TableHead className="px-4 w-24">Actions</TableHead>
+							<TableHead className="w-24 px-4">Actions</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -271,7 +271,7 @@ function AdminCdtsView() {
 							<TableRow>
 								<TableCell
 									colSpan={4}
-									className="text-center py-10 text-xs text-muted-foreground"
+									className="py-10 text-center text-muted-foreground text-xs"
 								>
 									No CDTs yet.
 								</TableCell>
@@ -282,7 +282,7 @@ function AdminCdtsView() {
 									<TableCell className="px-4 py-2.5 font-medium">
 										{cdt.name}
 									</TableCell>
-									<TableCell className="px-4 py-2.5 text-muted-foreground font-mono text-xs">
+									<TableCell className="px-4 py-2.5 font-mono text-muted-foreground text-xs">
 										@{cdt.handle}
 									</TableCell>
 									<TableCell className="px-4 py-2.5 text-muted-foreground">
@@ -327,51 +327,58 @@ function AdminCdtsView() {
 					</DialogHeader>
 					<div className="space-y-3">
 						{createError && (
-							<div className="p-2 text-xs text-destructive bg-destructive/10 rounded-md">
+							<div className="rounded-md bg-destructive/10 p-2 text-destructive text-xs">
 								{createError}
 							</div>
 						)}
 						<div className="space-y-1.5">
-							<label className="text-xs font-medium">
+							<label htmlFor="name-input" className="font-medium text-xs">
 								Name <span className="text-destructive">*</span>
 							</label>
 							<Input
+								id="name-input"
 								value={newName}
 								onChange={(e) => setNewName(e.target.value)}
 								placeholder="Competition Driving Team"
 								className="h-8 text-xs"
 							/>
 							{newName && (
-								<p className="text-xs text-muted-foreground">
+								<p className="text-muted-foreground text-xs">
 									Handle: @{newHandle || slugify(newName)}
 								</p>
 							)}
 						</div>
 						<div className="space-y-1.5">
-							<label className="text-xs font-medium">
+							<label htmlFor="handle-input" className="font-medium text-xs">
 								Custom Handle{" "}
 								<span className="text-muted-foreground">(optional)</span>
 							</label>
 							<Input
+								id="handle-input"
 								value={newHandle}
 								onChange={(e) => setNewHandle(e.target.value)}
 								placeholder={newName ? slugify(newName) : "auto-generated"}
 								className="h-8 text-xs"
 							/>
 						</div>
-						<div className="space-y-1.5 flex flex-col">
-							<label className="text-xs font-medium">
+						<div className="flex flex-col space-y-1.5">
+							<label htmlFor="channel-picker" className="font-medium text-xs">
 								Slack Channel{" "}
 								<span className="text-muted-foreground">(optional)</span>
 							</label>
-							<ChannelPicker value={newChannelId} onChange={setNewChannelId} />
+							<ChannelPicker
+								id="channel-picker"
+								value={newChannelId}
+								onChange={setNewChannelId}
+							/>
 						</div>
 						<div className="space-y-2">
-							<label className="text-xs font-medium">
+							<label htmlFor="user-picker" className="font-medium text-xs">
 								Members{" "}
 								<span className="text-muted-foreground">(optional)</span>
 							</label>
 							<UserPicker
+								id="user-picker"
 								selectedIds={newMembers.map((m) => m.user_id)}
 								selectedUsers={newMembers}
 								onToggle={(u, isSelected) => {
@@ -422,27 +429,33 @@ function AdminCdtsView() {
 						<DialogTitle>Edit CDT</DialogTitle>
 					</DialogHeader>
 					{editLoading ? (
-						<p className="text-xs text-muted-foreground py-4 text-center">
+						<p className="py-4 text-center text-muted-foreground text-xs">
 							Loading…
 						</p>
 					) : editDetail ? (
 						<div className="space-y-4">
 							{editError && (
-								<div className="p-2 text-xs text-destructive bg-destructive/10 rounded-md">
+								<div className="rounded-md bg-destructive/10 p-2 text-destructive text-xs">
 									{editError}
 								</div>
 							)}
 							<div className="space-y-1.5">
-								<label className="text-xs font-medium">Name</label>
+								<label htmlFor="edit-name" className="font-medium text-xs">
+									Name
+								</label>
 								<Input
+									id="edit-name"
 									value={editName}
 									onChange={(e) => setEditName(e.target.value)}
 									className="h-8 text-xs"
 								/>
 							</div>
-							<div className="space-y-1.5 flex flex-col">
-								<label className="text-xs font-medium">Slack Channel</label>
+							<div className="flex flex-col space-y-1.5">
+								<label htmlFor="edit-channel" className="font-medium text-xs">
+									Slack Channel
+								</label>
 								<ChannelPicker
+									id="edit-channel"
 									value={editChannelId}
 									onChange={setEditChannelId}
 								/>
@@ -450,11 +463,12 @@ function AdminCdtsView() {
 
 							<div className="space-y-2">
 								<div className="flex items-center justify-between">
-									<p className="text-xs font-medium">
+									<label htmlFor="edit-members" className="font-medium text-xs">
 										Members ({editMembers.length})
-									</p>
+									</label>
 								</div>
 								<UserPicker
+									id="edit-members"
 									selectedIds={editMembers.map((m) => m.user_id)}
 									selectedUsers={editMembers}
 									onToggle={(u, isSelected) => {
@@ -525,10 +539,10 @@ export function CdtsPage({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="space-y-4 animate-pulse">
-					<div className="h-6 w-16 bg-muted rounded"></div>
-					<div className="h-4 w-48 bg-muted rounded"></div>
-					<div className="h-64 w-full bg-muted rounded mt-4"></div>
+				<div className="animate-pulse space-y-4">
+					<div className="h-6 w-16 rounded bg-muted"></div>
+					<div className="h-4 w-48 rounded bg-muted"></div>
+					<div className="mt-4 h-64 w-full rounded bg-muted"></div>
 				</div>
 			</Layout>
 		);
@@ -537,8 +551,8 @@ export function CdtsPage({ session }: { session: Session }) {
 		<Layout session={session}>
 			<div className="space-y-6">
 				<div>
-					<h1 className="text-lg font-semibold tracking-tight">CDTs</h1>
-					<p className="text-sm text-muted-foreground mt-0.5">
+					<h1 className="font-semibold text-lg tracking-tight">CDTs</h1>
+					<p className="mt-0.5 text-muted-foreground text-sm">
 						Team members organized by CDT and role.
 					</p>
 				</div>

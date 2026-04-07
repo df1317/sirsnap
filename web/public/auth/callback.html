@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Sirsnap - Authenticating...</title>
     <style>
@@ -20,7 +20,7 @@
     <script>
       (async () => {
         try {
-          const response = await fetch("/api/auth/callback" + window.location.search);
+          const response = await fetch(`/api/auth/callback${window.location.search}`);
           if (response.ok) {
             window.location.href = '/';
           } else {
@@ -28,14 +28,14 @@
             document.getElementById('spinner').style.display = 'none';
             document.getElementById('text').style.display = 'none';
             document.getElementById('error').style.display = 'block';
-            document.getElementById('error').textContent = 'Error: ' + (data.error || 'Failed to connect to Slack. Please try again.');
+            document.getElementById('error').textContent = `Error: ${data.error || 'Failed to connect to Slack. Please try again.'}`;
             
             // Redirect to home with error after a moment so the user can see the error page banner
             setTimeout(() => {
-              window.location.href = '/?error=' + encodeURIComponent(data.error || 'server_error');
+              window.location.href = `/?error=${encodeURIComponent(data.error || 'server_error')}`;
             }, 1500);
           }
-        } catch (e) {
+        } catch (_e) {
           window.location.href = '/?error=server_error';
         }
       })();

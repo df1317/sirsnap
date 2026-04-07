@@ -2,12 +2,15 @@ import {
 	type ColumnDef,
 	flexRender,
 	getCoreRowModel,
+	getFilteredRowModel,
 	getSortedRowModel,
 	type SortingState,
 	useReactTable,
-	getFilteredRowModel,
 } from "@tanstack/react-table";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
 	Table,
 	TableBody,
@@ -16,9 +19,6 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData, TValue> {
@@ -106,15 +106,15 @@ export function DataTable<TData, TValue>({
 					placeholder={filterPlaceholder}
 					value={globalFilter}
 					onChange={(e) => setGlobalFilter(e.target.value)}
-					className="max-w-sm h-8 text-xs"
+					className="h-8 max-w-sm text-xs"
 				/>
 				{enableRowSelection && selectedCount > 0 && (
-					<span className="text-xs text-muted-foreground">
+					<span className="text-muted-foreground text-xs">
 						{selectedCount} of {totalCount} selected
 					</span>
 				)}
 			</div>
-			<div className="rounded-md border overflow-hidden">
+			<div className="overflow-hidden rounded-md border">
 				<Table>
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
@@ -165,7 +165,7 @@ export function DataTable<TData, TValue>({
 							<TableRow>
 								<TableCell
 									colSpan={allColumns.length}
-									className="text-center py-10 text-muted-foreground text-xs"
+									className="py-10 text-center text-muted-foreground text-xs"
 								>
 									No results.
 								</TableCell>

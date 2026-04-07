@@ -1,34 +1,34 @@
 import { Hono } from "hono";
+import { SlackAPIClient } from "slack-web-api-client";
 import type { Env } from "../index";
+import {
+	buildAnnouncementBlocks,
+	updateAnnouncement,
+} from "../lib/announcements";
+import {
+	clearCdtProfile,
+	deleteSlackUsergroup,
+	sendWelcomeMessage,
+	syncCdtUsers,
+} from "../lib/slack-cdt";
+import { syncAllUsers } from "./lib/sync";
 import type { Session } from "./middleware/session";
 import {
-	sessionMiddleware,
-	requireSession,
 	requireAdmin,
+	requireSession,
+	sessionMiddleware,
 } from "./middleware/session";
-import { syncAllUsers } from "./lib/sync";
-import {
-	updateAnnouncement,
-	buildAnnouncementBlocks,
-} from "../lib/announcements";
-import { SlackAPIClient } from "slack-web-api-client";
-import {
-	syncCdtUsers,
-	clearCdtProfile,
-	sendWelcomeMessage,
-	deleteSlackUsergroup,
-} from "../lib/slack-cdt";
 import authRoutes from "./routes/auth";
 
 type Variables = { session: Session | null };
 
 const slugify = (name: string) =>
-	name
+	`${name
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/(^-|-$)/g, "") + "-cdt";
+		.replace(/(^-|-$)/g, "")}-cdt`;
 
-export function createWebApp(env: Env) {
+export function createWebApp(_env: Env) {
 	const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 	// Server-side auth (must stay here — sets httpOnly cookies)
@@ -109,7 +109,7 @@ export function createWebApp(env: Env) {
 		// The SQLite query returns yes_count/maybe_count/no_count as BigInts or numbers.
 		// If they come back null due to an empty DB row, default to 0.
 		return c.json(
-			rows.results.map((r: any) => ({
+			rows.results.map((r: Record<string, unknown>) => ({
 				...r,
 				yes_count: Number(r.yes_count || 0),
 				maybe_count: Number(r.maybe_count || 0),
@@ -135,7 +135,7 @@ export function createWebApp(env: Env) {
 			.all();
 
 		return c.json(
-			rows.results.map((r: any) => ({
+			rows.results.map((r: Record<string, unknown>) => ({
 				...r,
 				yes_count: Number(r.yes_count || 0),
 				maybe_count: Number(r.maybe_count || 0),
@@ -371,15 +371,16 @@ export function createWebApp(env: Env) {
 		const finalHandle = handle || slugify(name);
 
 		const adminClient = new SlackAPIClient(c.env.SLACK_ADMIN_TOKEN);
-		let result;
+		let result: { usergroup?: { id: string } } | undefined;
 		try {
 			result = (await adminClient.usergroups.create({
 				name,
 				handle: finalHandle,
 				...(channel_id ? { channels: channel_id } : {}),
 			})) as { usergroup?: { id: string } };
-		} catch (err: any) {
-			if (err?.error === "name_already_exists") {
+		} catch (err: unknown) {
+			const error = err as { error?: string };
+			if (error?.error === "name_already_exists") {
 				return c.json(
 					{
 						error: "A Slack usergroup with this name or handle already exists.",
@@ -388,12 +389,12 @@ export function createWebApp(env: Env) {
 				);
 			}
 			return c.json(
-				{ error: err?.error || "Failed to create Slack usergroup" },
+				{ error: error?.error || "Failed to create Slack usergroup" },
 				500,
 			);
 		}
 
-		const groupId = result.usergroup?.id;
+		const groupId = result?.usergroup?.id;
 		if (!groupId)
 			return c.json({ error: "Failed to create Slack usergroup" }, 500);
 

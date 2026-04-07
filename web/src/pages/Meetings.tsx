@@ -1,51 +1,58 @@
-import { useEffect, useState, useMemo } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
 import {
-	api,
-	type Session,
-	type Meeting,
-	type AdminMeeting,
-	type MeetingAttendance,
-} from "../lib/api";
+	CalendarIcon,
+	Check,
+	HelpCircle,
+	Pencil,
+	Plus,
+	Trash2,
+	X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChannelPicker } from "../components/ChannelPicker";
+import { DataTable } from "../components/data-table";
 import { Layout } from "../components/Layout";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { Card, CardContent } from "../components/ui/card";
-import { DataTable } from "../components/data-table";
-import { Input } from "../components/ui/input";
-import { Separator } from "../components/ui/separator";
 import { Calendar } from "../components/ui/calendar";
+import { Card, CardContent } from "../components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "../components/ui/popover";
-import { CalendarIcon } from "lucide-react";
-import { ChannelPicker } from "../components/ChannelPicker";
-import { format } from "date-fns";
-import { cn } from "../lib/utils";
-import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-	DialogFooter,
-} from "../components/ui/dialog";
+import { Separator } from "../components/ui/separator";
 import {
 	Sheet,
 	SheetContent,
 	SheetHeader,
 	SheetTitle,
 } from "../components/ui/sheet";
-import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import {
 	Tabs,
 	TabsContent,
 	TabsList,
 	TabsTrigger,
 } from "../components/ui/tabs";
-import { type ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, Plus, Check, HelpCircle, X } from "lucide-react";
+import { Textarea } from "../components/ui/textarea";
+import {
+	type AdminMeeting,
+	api,
+	type Meeting,
+	type MeetingAttendance,
+	type Session,
+} from "../lib/api";
+import { cn } from "../lib/utils";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -86,7 +93,7 @@ function DatePicker({
 						className,
 					)}
 				>
-					<CalendarIcon className="size-3.5 mr-1.5 shrink-0" />
+					<CalendarIcon className="mr-1.5 size-3.5 shrink-0" />
 					{date ? format(date, "MMM d, yyyy") : <span>{placeholder}</span>}
 				</Button>
 			</PopoverTrigger>
@@ -216,10 +223,11 @@ function CreateMeetingDialog({
 				</DialogHeader>
 				<div className="space-y-3">
 					<div className="space-y-1.5">
-						<label className="text-xs font-medium">
+						<label htmlFor="name-input" className="font-medium text-xs">
 							Name <span className="text-destructive">*</span>
 						</label>
 						<Input
+							id="name-input"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="Build Session"
@@ -227,58 +235,68 @@ function CreateMeetingDialog({
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<label className="text-xs font-medium">
+						<label htmlFor="desc-input" className="font-medium text-xs">
 							Description{" "}
 							<span className="text-muted-foreground">(optional)</span>
 						</label>
 						<Textarea
+							id="desc-input"
 							value={desc}
 							onChange={(e) => setDesc(e.target.value)}
 							placeholder="What's happening at this meeting?"
-							className="text-xs min-h-16 resize-none"
+							className="min-h-16 resize-none text-xs"
 							rows={3}
 						/>
 					</div>
 					<div className="grid grid-cols-7 gap-3">
-						<div className="space-y-1.5 flex flex-col col-span-3">
-							<label className="text-xs font-medium">
+						<div className="col-span-3 flex flex-col space-y-1.5">
+							<label htmlFor="date-picker" className="font-medium text-xs">
 								Date <span className="text-destructive">*</span>
 							</label>
 							<DatePicker
+								id="date-picker"
 								date={date}
 								onSelect={handleDateSelect}
 								placeholder="Pick a date"
 							/>
 						</div>
-						<div className="space-y-1.5 col-span-4">
-							<label className="text-xs font-medium flex items-center justify-between">
+						<div className="col-span-4 space-y-1.5">
+							<label
+								htmlFor="time-input"
+								className="flex items-center justify-between font-medium text-xs"
+							>
 								<span>
 									Time <span className="text-destructive">*</span>
 								</span>
 							</label>
 							<div className="flex items-center gap-1.5">
 								<Input
+									id="time-input"
 									type="time"
 									value={time}
 									onChange={(e) => setTime(e.target.value)}
-									className="h-8 flex-1 text-xs px-2"
+									className="h-8 flex-1 px-2 text-xs"
 								/>
 								<span className="text-muted-foreground text-xs">-</span>
 								<Input
 									type="time"
 									value={endTime}
 									onChange={(e) => setEndTime(e.target.value)}
-									className="h-8 flex-1 text-xs px-2"
+									className="h-8 flex-1 px-2 text-xs"
 								/>
 							</div>
 						</div>
 					</div>
-					<div className="space-y-1.5 flex flex-col">
-						<label className="text-xs font-medium">
+					<div className="flex flex-col space-y-1.5">
+						<label htmlFor="channel-picker" className="font-medium text-xs">
 							Slack Channel{" "}
 							<span className="text-muted-foreground">(for announcement)</span>
 						</label>
-						<ChannelPicker value={channel} onChange={setChannel} />
+						<ChannelPicker
+							id="channel-picker"
+							value={channel}
+							onChange={setChannel}
+						/>
 					</div>
 
 					<Separator />
@@ -286,11 +304,11 @@ function CreateMeetingDialog({
 					<div className="space-y-2">
 						<button
 							type="button"
-							className="flex items-center gap-2 text-xs font-medium cursor-pointer"
+							className="flex cursor-pointer items-center gap-2 font-medium text-xs"
 							onClick={() => setIsRecurring(!isRecurring)}
 						>
 							<div
-								className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isRecurring ? "bg-primary border-primary" : "border-input"}`}
+								className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${isRecurring ? "border-primary bg-primary" : "border-input"}`}
 							>
 								{isRecurring && (
 									<span className="text-[10px] text-primary-foreground">✓</span>
@@ -300,20 +318,21 @@ function CreateMeetingDialog({
 						</button>
 
 						{isRecurring && (
-							<div className="space-y-4 pl-6 pt-2">
-								<div className="space-y-1.5 flex flex-col">
-									<label className="text-xs font-medium">
+							<div className="space-y-4 pt-2 pl-6">
+								<div className="flex flex-col space-y-1.5">
+									<label htmlFor="day-picker-0" className="font-medium text-xs">
 										Repeat on <span className="text-destructive">*</span>
 									</label>
 									<div className="flex gap-1.5">
 										{DAY_LABELS.map((label, i) => (
 											<button
-												key={i}
+												key={label}
+												id={`day-picker-${i}`}
 												type="button"
-												className={`w-9 h-8 rounded-md border text-[11px] font-medium transition-colors ${
+												className={`h-8 w-9 rounded-md border font-medium text-[11px] transition-colors ${
 													selectedDays.includes(i)
-														? "bg-primary text-primary-foreground border-primary"
-														: "bg-transparent border-input text-foreground hover:bg-muted/80"
+														? "border-primary bg-primary text-primary-foreground"
+														: "border-input bg-transparent text-foreground hover:bg-muted/80"
 												}`}
 												onClick={() => toggleDay(i)}
 											>
@@ -322,11 +341,15 @@ function CreateMeetingDialog({
 										))}
 									</div>
 								</div>
-								<div className="space-y-1.5 flex flex-col">
-									<label className="text-xs font-medium">
+								<div className="flex flex-col space-y-1.5">
+									<label
+										htmlFor="end-date-picker"
+										className="font-medium text-xs"
+									>
 										End date <span className="text-destructive">*</span>
 									</label>
 									<DatePicker
+										id="end-date-picker"
 										date={endDate}
 										onSelect={setEndDate}
 										placeholder="Pick end date"
@@ -374,7 +397,7 @@ function EditMeetingDialog({
 	const handleSave = async () => {
 		setSaving(true);
 		try {
-			let scheduledAt: number | undefined = undefined;
+			let scheduledAt: number | undefined;
 			if (date && time) {
 				const [hours, minutes] = time.split(":").map(Number);
 				const dt = new Date(date);
@@ -410,25 +433,33 @@ function EditMeetingDialog({
 				</DialogHeader>
 				<div className="space-y-3">
 					<div className="space-y-1.5">
-						<label className="text-xs font-medium">Name</label>
+						<label htmlFor="edit-name" className="font-medium text-xs">
+							Name
+						</label>
 						<Input
+							id="edit-name"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							className="h-8 text-xs"
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<label className="text-xs font-medium">Description</label>
+						<label htmlFor="edit-desc" className="font-medium text-xs">
+							Description
+						</label>
 						<Textarea
+							id="edit-desc"
 							value={desc}
 							onChange={(e) => setDesc(e.target.value)}
-							className="text-xs min-h-16 resize-none"
+							className="min-h-16 resize-none text-xs"
 							rows={3}
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<label className="text-xs font-medium">Date & Time</label>
-						<div className="flex gap-2">
+						<label htmlFor="date-time-picker" className="font-medium text-xs">
+							Date & Time
+						</label>
+						<div className="flex gap-2" id="date-time-picker">
 							<DatePicker
 								date={date}
 								onSelect={(d) => {
@@ -490,40 +521,40 @@ function MeetingAttendanceDialog({
 					</SheetTitle>
 				</SheetHeader>
 				{loading ? (
-					<div className="py-8 text-center text-sm text-muted-foreground">
+					<div className="py-8 text-center text-muted-foreground text-sm">
 						Loading attendance...
 					</div>
 				) : attendance && attendance.length > 0 ? (
 					<div className="space-y-4 px-6 pt-6">
 						{attendance.map((a) => (
 							<div key={a.user_id} className="flex items-start gap-3">
-								<Avatar className="size-8 mt-0.5">
+								<Avatar className="mt-0.5 size-8">
 									<AvatarImage src={a.avatar_url} />
 									<AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
 								</Avatar>
 								<div className="flex-1 space-y-1">
 									<div className="flex items-center justify-between">
-										<p className="text-sm font-medium leading-none">{a.name}</p>
+										<p className="font-medium text-sm leading-none">{a.name}</p>
 										<div className="flex items-center text-xs">
 											{a.status === "yes" && (
-												<span className="text-emerald-600 flex items-center gap-1">
+												<span className="flex items-center gap-1 text-emerald-600">
 													<Check className="size-3" /> Yes
 												</span>
 											)}
 											{a.status === "maybe" && (
-												<span className="text-amber-600 flex items-center gap-1">
+												<span className="flex items-center gap-1 text-amber-600">
 													<HelpCircle className="size-3" /> Maybe
 												</span>
 											)}
 											{a.status === "no" && (
-												<span className="text-red-600 flex items-center gap-1">
+												<span className="flex items-center gap-1 text-red-600">
 													<X className="size-3" /> No
 												</span>
 											)}
 										</div>
 									</div>
 									{a.note && (
-										<p className="text-sm text-muted-foreground bg-muted p-2 rounded-md mt-1">
+										<p className="mt-1 rounded-md bg-muted p-2 text-muted-foreground text-sm">
 											{a.note}
 										</p>
 									)}
@@ -532,7 +563,7 @@ function MeetingAttendanceDialog({
 						))}
 					</div>
 				) : (
-					<div className="py-8 text-center text-sm text-muted-foreground">
+					<div className="py-8 text-center text-muted-foreground text-sm">
 						No RSVPs yet.
 					</div>
 				)}
@@ -554,22 +585,30 @@ function AdminMeetingsView() {
 		api.getAdminMeetings().then(setMeetings);
 	}, []);
 
-	const handleCancel = async (m: AdminMeeting) => {
-		const newVal = !m.cancelled;
-		setMeetings((prev) =>
-			prev.map((x) => (x.id === m.id ? { ...x, cancelled: newVal } : x)),
-		);
-		await api.cancelMeeting(m.id, newVal).catch(() => {
+	const handleCancel = useCallback(
+		async (m: AdminMeeting) => {
+			const newVal = !m.cancelled;
 			setMeetings((prev) =>
-				prev.map((x) => (x.id === m.id ? { ...x, cancelled: m.cancelled } : x)),
+				prev.map((x) => (x.id === m.id ? { ...x, cancelled: newVal } : x)),
 			);
-		});
-	};
+			await api.cancelMeeting(m.id, newVal).catch(() => {
+				setMeetings((prev) =>
+					prev.map((x) =>
+						x.id === m.id ? { ...x, cancelled: m.cancelled } : x,
+					),
+				);
+			});
+		},
+		[setMeetings],
+	);
 
-	const handleDelete = async (id: number) => {
-		await api.deleteMeeting(id);
-		setMeetings((prev) => prev.filter((x) => x.id !== id));
-	};
+	const handleDelete = useCallback(
+		async (id: number) => {
+			await api.deleteMeeting(id);
+			setMeetings((prev) => prev.filter((x) => x.id !== id));
+		},
+		[setMeetings],
+	);
 
 	// Use useMemo to prevent recreating the columns array on every render
 	// which prevents the DataTable and underlying images from re-rendering
@@ -582,7 +621,7 @@ function AdminMeetingsView() {
 					<div className="flex items-center gap-2">
 						<span className="font-medium">{row.original.name}</span>
 						{row.original.series_id && (
-							<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+							<Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
 								Series
 							</Badge>
 						)}
@@ -601,7 +640,7 @@ function AdminMeetingsView() {
 						timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 					}
 					return (
-						<span className="text-muted-foreground whitespace-nowrap">
+						<span className="whitespace-nowrap text-muted-foreground">
 							{timeStr}
 						</span>
 					);
@@ -626,7 +665,7 @@ function AdminMeetingsView() {
 				cell: ({ row }) => {
 					const m = row.original;
 					return (
-						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+						<div className="flex items-center gap-0.5 text-muted-foreground text-xs">
 							<span className="text-emerald-600">{m.yes_count}</span>
 							<span className="mx-0.5">/</span>
 							<span className="text-amber-600">{m.maybe_count}</span>
@@ -645,6 +684,12 @@ function AdminMeetingsView() {
 						<div
 							className="flex items-center gap-1"
 							onClick={(e) => e.stopPropagation()}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.stopPropagation();
+								}
+							}}
+							role="none"
 						>
 							<Button
 								variant="ghost"
@@ -674,20 +719,20 @@ function AdminMeetingsView() {
 				},
 			},
 		],
-		[now],
+		[now, handleCancel, handleDelete],
 	);
 
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<span className="text-xs text-muted-foreground">
+					<span className="text-muted-foreground text-xs">
 						{meetings.length} meetings
 					</span>
 					{selectedMeetings.length > 0 && (
 						<>
 							<Separator orientation="vertical" className="h-4" />
-							<span className="text-xs text-muted-foreground">
+							<span className="text-muted-foreground text-xs">
 								{selectedMeetings.length} selected
 							</span>
 						</>
@@ -705,12 +750,12 @@ function AdminMeetingsView() {
 								setSelectedMeetings([]);
 							}}
 						>
-							<Trash2 className="size-3.5 mr-1" />
+							<Trash2 className="mr-1 size-3.5" />
 							Delete Selected
 						</Button>
 					)}
 					<Button size="sm" onClick={() => setCreateOpen(true)}>
-						<Plus className="size-3.5 mr-1" />
+						<Plus className="mr-1 size-3.5" />
 						New Meeting
 					</Button>
 				</div>
@@ -789,7 +834,7 @@ function UpcomingMeetingsView({
 					<div className="flex flex-col">
 						<span className="font-medium">{row.original.name}</span>
 						{row.original.description && (
-							<span className="text-xs text-muted-foreground truncate max-w-[200px]">
+							<span className="max-w-[200px] truncate text-muted-foreground text-xs">
 								{row.original.description}
 							</span>
 						)}
@@ -808,7 +853,7 @@ function UpcomingMeetingsView({
 						timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 					}
 					return (
-						<span className="text-muted-foreground whitespace-nowrap">
+						<span className="whitespace-nowrap text-muted-foreground">
 							{timeStr}
 						</span>
 					);
@@ -820,7 +865,7 @@ function UpcomingMeetingsView({
 				cell: ({ row }) => {
 					const m = row.original;
 					return (
-						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+						<div className="flex items-center gap-0.5 text-muted-foreground text-xs">
 							<span className="text-emerald-600">{m.yes_count || 0}</span>
 							<span className="mx-0.5">/</span>
 							<span className="text-amber-600">{m.maybe_count || 0}</span>
@@ -863,7 +908,7 @@ function UpcomingMeetingsView({
 							</div>
 							{m.my_note && (
 								<span
-									className="text-xs text-muted-foreground italic truncate max-w-[100px]"
+									className="max-w-[100px] truncate text-muted-foreground text-xs italic"
 									title={m.my_note}
 								>
 									"{m.my_note}"
@@ -885,11 +930,11 @@ function UpcomingMeetingsView({
 									onClick={(e) => e.stopPropagation()}
 								>
 									<div className="space-y-2">
-										<h4 className="text-xs font-medium">Note for {m.name}</h4>
+										<h4 className="font-medium text-xs">Note for {m.name}</h4>
 										<Textarea
 											id={`note-${m.id}`}
 											defaultValue={m.my_note ?? ""}
-											className="text-xs resize-none"
+											className="resize-none text-xs"
 											rows={2}
 											placeholder="Add a note..."
 										/>
@@ -923,13 +968,13 @@ function UpcomingMeetingsView({
 	return (
 		<div className="space-y-4">
 			{selectedMeetings.length > 0 && (
-				<Card className="bg-muted/30 border-primary/20">
-					<CardContent className="p-3 flex items-center justify-between gap-4">
-						<span className="text-sm font-medium">
+				<Card className="border-primary/20 bg-muted/30">
+					<CardContent className="flex items-center justify-between gap-4 p-3">
+						<span className="font-medium text-sm">
 							{selectedMeetings.length} meetings selected
 						</span>
-						<div className="flex items-center gap-2 flex-1 max-w-md">
-							<div className="flex gap-1 shrink-0">
+						<div className="flex max-w-md flex-1 items-center gap-2">
+							<div className="flex shrink-0 gap-1">
 								{(["yes", "maybe", "no"] as const).map((s) => {
 									const labels = {
 										yes: "Going",
@@ -953,7 +998,7 @@ function UpcomingMeetingsView({
 								size="sm"
 								onClick={handleBulkUpdate}
 								disabled={!bulkStatus || saving}
-								className="h-8 ml-auto"
+								className="ml-auto h-8"
 							>
 								{saving ? "Saving…" : "Apply"}
 							</Button>
@@ -994,7 +1039,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 					<div className="flex flex-col">
 						<span className="font-medium">{row.original.name}</span>
 						{row.original.description && (
-							<span className="text-xs text-muted-foreground truncate max-w-[200px]">
+							<span className="max-w-[200px] truncate text-muted-foreground text-xs">
 								{row.original.description}
 							</span>
 						)}
@@ -1013,7 +1058,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 						timeStr += ` - ${endDt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 					}
 					return (
-						<span className="text-muted-foreground whitespace-nowrap">
+						<span className="whitespace-nowrap text-muted-foreground">
 							{timeStr}
 						</span>
 					);
@@ -1025,7 +1070,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 				cell: ({ row }) => {
 					const m = row.original;
 					return (
-						<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+						<div className="flex items-center gap-0.5 text-muted-foreground text-xs">
 							<span className="text-emerald-600">{m.yes_count || 0}</span>
 							<span className="mx-0.5">/</span>
 							<span className="text-amber-600">{m.maybe_count || 0}</span>
@@ -1059,13 +1104,13 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 						<div className="flex items-center gap-2">
 							<Badge
 								variant="outline"
-								className={`text-[10px] px-1.5 py-0 font-medium ${colors[m.my_status]}`}
+								className={`px-1.5 py-0 font-medium text-[10px] ${colors[m.my_status]}`}
 							>
 								{labels[m.my_status]}
 							</Badge>
 							{m.my_note && (
 								<span
-									className="text-xs text-muted-foreground italic truncate max-w-[150px]"
+									className="max-w-[150px] truncate text-muted-foreground text-xs italic"
 									title={m.my_note}
 								>
 									"{m.my_note}"
@@ -1081,7 +1126,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 
 	if (loading) {
 		return (
-			<div className="text-sm text-muted-foreground py-8 text-center">
+			<div className="py-8 text-center text-muted-foreground text-sm">
 				Loading past meetings...
 			</div>
 		);
@@ -1089,7 +1134,7 @@ function PastMeetingsView({ isAdmin }: { isAdmin: boolean }) {
 
 	if (meetings.length === 0) {
 		return (
-			<p className="text-sm text-muted-foreground py-4">No past meetings.</p>
+			<p className="py-4 text-muted-foreground text-sm">No past meetings.</p>
 		);
 	}
 
@@ -1131,7 +1176,7 @@ export function MeetingsPage({ session }: { session: Session }) {
 			sessionStorage.setItem("meetings_cache", JSON.stringify(m));
 			setLoading(false);
 		});
-	}, [session.is_admin]);
+	}, []);
 
 	const updateRsvp = (
 		id: number,
@@ -1181,43 +1226,43 @@ export function MeetingsPage({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="space-y-6 animate-pulse">
+				<div className="animate-pulse space-y-6">
 					<div className="space-y-1.5">
-						<div className="h-6 w-24 bg-muted rounded"></div>
-						<div className="h-4 w-48 bg-muted rounded"></div>
+						<div className="h-6 w-24 rounded bg-muted"></div>
+						<div className="h-4 w-48 rounded bg-muted"></div>
 					</div>
-					<div className="h-9 w-64 bg-muted rounded-md mt-4 mb-8"></div>
-					<div className="border rounded-md overflow-hidden bg-card">
+					<div className="mt-4 mb-8 h-9 w-64 rounded-md bg-muted"></div>
+					<div className="overflow-hidden rounded-md border bg-card">
 						<div className="h-10 border-b bg-muted/30"></div>
-						<div className="flex items-center gap-4 p-4 h-14 border-b">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 border-b p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
-						<div className="flex items-center gap-4 p-4 h-14 border-b">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 border-b p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
-						<div className="flex items-center gap-4 p-4 h-14 border-b">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 border-b p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
-						<div className="flex items-center gap-4 p-4 h-14 border-b">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 border-b p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
-						<div className="flex items-center gap-4 p-4 h-14 border-b">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 border-b p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
-						<div className="flex items-center gap-4 p-4 h-14">
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/4 bg-muted rounded"></div>
-							<div className="h-4 w-1/3 bg-muted rounded"></div>
+						<div className="flex h-14 items-center gap-4 p-4">
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/4 rounded bg-muted"></div>
+							<div className="h-4 w-1/3 rounded bg-muted"></div>
 						</div>
 					</div>
 				</div>
@@ -1228,7 +1273,7 @@ export function MeetingsPage({ session }: { session: Session }) {
 		<div className="space-y-8">
 			<div>
 				{upcoming.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No upcoming meetings.</p>
+					<p className="text-muted-foreground text-sm">No upcoming meetings.</p>
 				) : (
 					<UpcomingMeetingsView meetings={upcoming} onUpdate={updateRsvp} />
 				)}
@@ -1240,8 +1285,8 @@ export function MeetingsPage({ session }: { session: Session }) {
 		<Layout session={session}>
 			<div className="space-y-4">
 				<div>
-					<h1 className="text-lg font-semibold tracking-tight">Meetings</h1>
-					<p className="text-sm text-muted-foreground mt-0.5">
+					<h1 className="font-semibold text-lg tracking-tight">Meetings</h1>
+					<p className="mt-0.5 text-muted-foreground text-sm">
 						RSVP to upcoming meetings.
 					</p>
 				</div>

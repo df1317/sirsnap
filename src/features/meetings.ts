@@ -1,12 +1,11 @@
-import { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
+import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import type { Env } from "../index";
 import { isAdmin } from "../lib/admin";
-import { generateDates } from "../lib/recurrence";
 import {
-	buildAnnouncementBlocks,
-	buildCancelledAnnouncementBlocks,
 	updateAnnouncement as _updateAnnouncement,
+	buildAnnouncementBlocks,
 } from "../lib/announcements";
+import { generateDates } from "../lib/recurrence";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -74,14 +73,14 @@ function buildListModal(
 				type: "header",
 				text: { type: "plain_text", text: "Upcoming" },
 			});
-			upcoming.forEach((m) => addRow(m, false));
+			for (const m of upcoming) addRow(m, false);
 		}
 		if (cancelled.length > 0) {
 			blocks.push({
 				type: "header",
 				text: { type: "plain_text", text: "Cancelled" },
 			});
-			cancelled.forEach((m) => addRow(m, true));
+			for (const m of cancelled) addRow(m, true);
 		}
 	}
 

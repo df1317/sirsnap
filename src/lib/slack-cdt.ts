@@ -1,4 +1,4 @@
-import { SlackAPIClient } from "slack-web-api-client";
+import type { SlackAPIClient } from "slack-web-api-client";
 import { setProfile } from "./users";
 
 export const CDT_FIELD_ID = "Xf040HCJKNJZ";

@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-	api,
-	type Session,
-	type User,
-	type Meeting,
-	type Cdt,
-} from "../lib/api";
 import { Layout } from "../components/Layout";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Card, CardContent } from "../components/ui/card";
-import { Textarea } from "../components/ui/textarea";
 import { Separator } from "../components/ui/separator";
+import { Textarea } from "../components/ui/textarea";
+import {
+	api,
+	type Cdt,
+	type Meeting,
+	type Session,
+	type User,
+} from "../lib/api";
 
 const roleVariant: Record<string, "student" | "mentor" | "parent" | "alumni"> =
 	{
@@ -51,10 +51,10 @@ function FeaturedMeeting({
 		}
 	};
 
-	const cancel = () => {
+	const cancel = useCallback(() => {
 		setPending(null);
 		setNote(meeting.my_note ?? "");
-	};
+	}, [meeting.my_note]);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -62,7 +62,7 @@ function FeaturedMeeting({
 		};
 		if (pending) window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [pending]);
+	}, [pending, cancel]);
 
 	const active = pending ?? meeting.my_status;
 	const d = new Date(meeting.scheduled_at * 1000);
@@ -78,21 +78,21 @@ function FeaturedMeeting({
 		<Card>
 			<CardContent className="pt-5 pb-5">
 				<div className="flex gap-5">
-					<div className="shrink-0 w-16 flex flex-col items-center justify-start pt-1">
-						<span className="text-[10px] font-semibold tracking-widest text-primary uppercase">
+					<div className="flex w-16 shrink-0 flex-col items-center justify-start pt-1">
+						<span className="font-semibold text-[10px] text-primary uppercase tracking-widest">
 							{month}
 						</span>
-						<span className="text-4xl font-bold leading-tight text-foreground">
+						<span className="font-bold text-4xl text-foreground leading-tight">
 							{day}
 						</span>
 					</div>
 
-					<div className="flex-1 min-w-0">
+					<div className="min-w-0 flex-1">
 						<p className="font-semibold text-lg leading-snug">{meeting.name}</p>
-						<p className="text-sm text-muted-foreground mt-1">
+						<p className="mt-1 text-muted-foreground text-sm">
 							{weekday} · {time}
 						</p>
-						<p className="text-xs text-muted-foreground mt-1">
+						<p className="mt-1 text-muted-foreground text-xs">
 							<span className="text-emerald-600">
 								{meeting.yes_count || 0} going
 							</span>
@@ -106,7 +106,7 @@ function FeaturedMeeting({
 							</span>
 						</p>
 						{meeting.description && (
-							<p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+							<p className="mt-2 text-muted-foreground text-sm leading-relaxed">
 								{meeting.description}
 							</p>
 						)}
@@ -133,15 +133,15 @@ function FeaturedMeeting({
 							</div>
 
 							{meeting.my_status && !pending && meeting.my_note && (
-								<p className="text-xs text-muted-foreground italic pl-0.5">
+								<p className="pl-0.5 text-muted-foreground text-xs italic">
 									"{meeting.my_note}"
 								</p>
 							)}
 
 							{pending && (
-								<div className="flex gap-2 items-start">
+								<div className="flex items-start gap-2">
 									<Textarea
-										className="flex-1 text-xs resize-none"
+										className="flex-1 resize-none text-xs"
 										rows={2}
 										placeholder="Add a note (optional)"
 										value={note}
@@ -154,7 +154,7 @@ function FeaturedMeeting({
 										}}
 										autoFocus
 									/>
-									<div className="flex flex-col gap-1 shrink-0">
+									<div className="flex shrink-0 flex-col gap-1">
 										<Button size="sm" onClick={confirm} disabled={saving}>
 											{saving ? "…" : "Save"}
 										</Button>
@@ -183,7 +183,8 @@ function CdtList({ cdts, users }: { cdts: Cdt[]; users: User[] }) {
 
 	for (const u of users) {
 		if (u.cdt_id && cdtMap.has(u.cdt_id)) {
-			const cdt = cdtMap.get(u.cdt_id)!;
+			const cdt = cdtMap.get(u.cdt_id);
+			if (!cdt) continue;
 			const arr = grouped.get(u.cdt_id)?.members ?? [];
 			arr.push(u);
 			grouped.set(u.cdt_id, { cdt, members: arr });
@@ -197,12 +198,12 @@ function CdtList({ cdts, users }: { cdts: Cdt[]; users: User[] }) {
 	return (
 		<Card className="overflow-hidden py-0">
 			{sorted.length === 0 && (
-				<p className="text-sm text-muted-foreground px-4 py-4">No CDTs yet.</p>
+				<p className="px-4 py-4 text-muted-foreground text-sm">No CDTs yet.</p>
 			)}
 			{sorted.map(({ cdt, members }, ci) => (
 				<div key={cdt.id}>
-					<div className="px-4 py-2 bg-muted/30">
-						<p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+					<div className="bg-muted/30 px-4 py-2">
+						<p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-widest">
 							{cdt.name} · {members.length}
 						</p>
 					</div>
@@ -213,15 +214,15 @@ function CdtList({ cdts, users }: { cdts: Cdt[]; users: User[] }) {
 									<AvatarImage src={u.avatar_url} />
 									<AvatarFallback>{u.name[0]}</AvatarFallback>
 								</Avatar>
-								<div className="flex-1 min-w-0">
-									<p className="text-sm font-medium truncate">{u.name}</p>
+								<div className="min-w-0 flex-1">
+									<p className="truncate font-medium text-sm">{u.name}</p>
 								</div>
 								{u.role ? (
 									<Badge variant={roleVariant[u.role]} className="text-[10px]">
 										{u.role.charAt(0).toUpperCase() + u.role.slice(1)}
 									</Badge>
 								) : (
-									<span className="text-xs text-muted-foreground shrink-0">
+									<span className="shrink-0 text-muted-foreground text-xs">
 										—
 									</span>
 								)}
@@ -260,21 +261,21 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 
 	return (
 		<div className="flex items-center gap-4 px-4 py-3">
-			<div className="shrink-0 w-10 flex flex-col items-center justify-start">
-				<span className="text-[9px] font-semibold tracking-widest text-primary uppercase">
+			<div className="flex w-10 shrink-0 flex-col items-center justify-start">
+				<span className="font-semibold text-[9px] text-primary uppercase tracking-widest">
 					{month}
 				</span>
-				<span className="text-lg font-bold leading-tight text-foreground">
+				<span className="font-bold text-foreground text-lg leading-tight">
 					{day}
 				</span>
 			</div>
-			<div className="flex-1 min-w-0">
-				<p className="text-sm font-medium truncate">{meeting.name}</p>
-				<p className="text-xs text-muted-foreground">
+			<div className="min-w-0 flex-1">
+				<p className="truncate font-medium text-sm">{meeting.name}</p>
+				<p className="text-muted-foreground text-xs">
 					{weekday} · {timeStr}
 				</p>
 			</div>
-			<div className="flex items-center gap-3 shrink-0">
+			<div className="flex shrink-0 items-center gap-3">
 				{meeting.my_status && (
 					<Badge
 						variant={
@@ -293,7 +294,7 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 								: "Can't go"}
 					</Badge>
 				)}
-				<div className="flex items-center gap-0.5 text-xs text-muted-foreground">
+				<div className="flex items-center gap-0.5 text-muted-foreground text-xs">
 					<span className="text-emerald-600">{meeting.yes_count || 0}</span>
 					<span className="mx-0.5">/</span>
 					<span className="text-amber-600">{meeting.maybe_count || 0}</span>
@@ -339,25 +340,25 @@ export function Dashboard({ session }: { session: Session }) {
 	if (loading)
 		return (
 			<Layout session={session}>
-				<div className="space-y-6 animate-pulse">
-					<div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-6">
+				<div className="animate-pulse space-y-6">
+					<div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px]">
 						<div className="space-y-3">
-							<div className="h-4 w-24 bg-muted rounded"></div>
+							<div className="h-4 w-24 rounded bg-muted"></div>
 							<Card>
 								<CardContent className="pt-5 pb-5">
 									<div className="flex gap-5">
-										<div className="shrink-0 w-16 space-y-2">
-											<div className="h-3 w-10 bg-muted rounded mx-auto"></div>
-											<div className="h-8 w-12 bg-muted rounded mx-auto"></div>
+										<div className="w-16 shrink-0 space-y-2">
+											<div className="mx-auto h-3 w-10 rounded bg-muted"></div>
+											<div className="mx-auto h-8 w-12 rounded bg-muted"></div>
 										</div>
 										<div className="flex-1 space-y-3">
-											<div className="h-5 w-3/4 bg-muted rounded"></div>
-											<div className="h-4 w-1/2 bg-muted rounded"></div>
-											<div className="h-3 w-1/3 bg-muted rounded"></div>
-											<div className="flex gap-2 mt-4">
-												<div className="h-8 w-16 bg-muted rounded"></div>
-												<div className="h-8 w-16 bg-muted rounded"></div>
-												<div className="h-8 w-16 bg-muted rounded"></div>
+											<div className="h-5 w-3/4 rounded bg-muted"></div>
+											<div className="h-4 w-1/2 rounded bg-muted"></div>
+											<div className="h-3 w-1/3 rounded bg-muted"></div>
+											<div className="mt-4 flex gap-2">
+												<div className="h-8 w-16 rounded bg-muted"></div>
+												<div className="h-8 w-16 rounded bg-muted"></div>
+												<div className="h-8 w-16 rounded bg-muted"></div>
 											</div>
 										</div>
 									</div>
@@ -365,7 +366,7 @@ export function Dashboard({ session }: { session: Session }) {
 							</Card>
 						</div>
 						<div className="space-y-3">
-							<div className="h-4 w-20 bg-muted rounded"></div>
+							<div className="h-4 w-20 rounded bg-muted"></div>
 							<Card className="h-48 bg-muted/20"></Card>
 						</div>
 					</div>
@@ -427,9 +428,9 @@ export function Dashboard({ session }: { session: Session }) {
 	return (
 		<Layout session={session}>
 			<div className="space-y-6">
-				<div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-6">
+				<div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px]">
 					<div className="space-y-3">
-						<h2 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
 							Next Meeting
 						</h2>
 						{featured ? (
@@ -437,12 +438,12 @@ export function Dashboard({ session }: { session: Session }) {
 						) : (
 							<Card>
 								<CardContent className="py-8 text-center">
-									<p className="text-sm text-muted-foreground">
+									<p className="text-muted-foreground text-sm">
 										No upcoming meetings.
 									</p>
 									<Link
 										to="/meetings"
-										className="text-sm text-primary hover:underline mt-1 inline-block"
+										className="mt-1 inline-block text-primary text-sm hover:underline"
 									>
 										View all meetings
 									</Link>
@@ -452,7 +453,7 @@ export function Dashboard({ session }: { session: Session }) {
 					</div>
 
 					<div className="space-y-3">
-						<h2 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
 							My CDT
 						</h2>
 						<CdtList
@@ -473,7 +474,7 @@ export function Dashboard({ session }: { session: Session }) {
 
 				{rest.length > 0 && (
 					<div className="space-y-3">
-						<h2 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<h2 className="font-semibold text-[13px] text-muted-foreground uppercase tracking-wider">
 							Upcoming · {rest.length}
 						</h2>
 						<Card className="overflow-hidden py-0">
@@ -481,7 +482,7 @@ export function Dashboard({ session }: { session: Session }) {
 								<div key={m.id}>
 									<Link
 										to="/meetings"
-										className="block hover:bg-muted/30 transition-colors"
+										className="block transition-colors hover:bg-muted/30"
 									>
 										<MeetingRow meeting={m} />
 									</Link>

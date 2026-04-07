@@ -1,11 +1,11 @@
-import { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
+import { SlackApp, type SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import * as features from "./features/index";
-import { createWebApp } from "./web/app";
-import { syncAllUsers } from "./web/lib/sync";
 import {
 	checkPendingMeetings,
 	flushPendingAnnouncements,
 } from "./lib/announcements";
+import { createWebApp } from "./web/app";
+import { syncAllUsers } from "./web/lib/sync";
 
 export type Env = SlackEdgeAppEnv & {
 	DB: D1Database;
@@ -25,7 +25,7 @@ export default {
 
 		if (url.pathname.startsWith("/api/slack")) {
 			const slackApp = new SlackApp({ env: env as any });
-			for (const [feature, handler] of Object.entries(features)) {
+			for (const [_feature, handler] of Object.entries(features)) {
 				if (typeof handler === "function") await handler(slackApp as any, env);
 			}
 			return await slackApp.run(request, ctx);

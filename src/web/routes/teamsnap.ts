@@ -228,6 +228,10 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			const tsMemberId = avail.member_id;
 			const statusCode = avail.status_code;
 
+			// If it's a "has not responded" (null) or "did not attend" we'll skip inserting it unless it's a yes/no/maybe status update.
+			// This addresses the user's request: "if there is a point before which we have never set a positive yes or no then just set it as nothing"
+			if (statusCode === null) continue;
+
 			const tsEvent = events.find((e) => e.id === tsEventId);
 			if (!tsEvent) continue;
 

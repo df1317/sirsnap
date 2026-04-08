@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { SlackAPIClient } from "slack-web-api-client";
+import { slackUser } from "../../db/schema";
 
 export async function syncAllUsers(
 	db: D1Database,
@@ -37,22 +40,31 @@ export async function syncAllUsers(
 
 	const now = Math.floor(Date.now() / 1000);
 	const chunkSize = 10;
+	const drizzleDb = drizzle(db);
 	for (let i = 0; i < users.length; i += chunkSize) {
 		const chunk = users.slice(i, i + chunkSize);
-		const stmts = chunk.map((u) =>
-			db
-				.prepare(
-					`INSERT INTO slack_user (user_id, name, avatar_url, is_admin, last_synced, calendar_token)
-         VALUES (?, ?, ?, ?, ?, hex(randomblob(16)))
-         ON CONFLICT (user_id) DO UPDATE SET
-           name = excluded.name,
-           avatar_url = excluded.avatar_url,
-           is_admin = excluded.is_admin,
-           calendar_token = COALESCE(slack_user.calendar_token, hex(randomblob(16))),
-           last_synced = excluded.last_synced`,
-				)
-				.bind(u.id, u.name, u.avatar, u.is_admin ? 1 : 0, now),
-		);
-		await db.batch(stmts);
+		for (const u of chunk) {
+			await drizzleDb
+				.insert(slackUser)
+				.values({
+					userId: u.id,
+					name: u.name,
+					avatarUrl: u.avatar,
+					isAdmin: u.is_admin ? 1 : 0,
+					lastSynced: now,
+					calendarToken: sql`hex(randomblob(16))`,
+				})
+				.onConflictDoUpdate({
+					target: slackUser.userId,
+					set: {
+						name: u.name,
+						avatarUrl: u.avatar,
+						isAdmin: u.is_admin ? 1 : 0,
+						lastSynced: now,
+						calendarToken: sql`COALESCE(slack_user.calendar_token, hex(randomblob(16)))`,
+					},
+				})
+				.run();
+		}
 	}
 }

@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
+import { attendance, kvStore, meeting, slackUser } from "../../db/schema";
 import type { Env } from "../../index";
 import { TeamSnapClient } from "../../lib/teamsnap/client";
 import { extractData } from "../../lib/teamsnap/types";
@@ -7,12 +10,21 @@ import { requireAdmin } from "../middleware/session";
 const teamsnap = new Hono<{ Bindings: Env }>();
 
 teamsnap.get("/sync", requireAdmin(), async (c) => {
-	const token = (await c.env.DB.prepare(
-		"SELECT value FROM kv_store WHERE key = 'teamsnap_token'",
-	).first("value")) as string;
-	const teamIdStr = (await c.env.DB.prepare(
-		"SELECT value FROM kv_store WHERE key = 'teamsnap_team_id'",
-	).first("value")) as string;
+	const db = drizzle(c.env.DB);
+
+	const tokenRow = await db
+		.select({ value: kvStore.value })
+		.from(kvStore)
+		.where(eq(kvStore.key, "teamsnap_token"))
+		.get();
+	const token = tokenRow?.value as string;
+
+	const teamIdRow = await db
+		.select({ value: kvStore.value })
+		.from(kvStore)
+		.where(eq(kvStore.key, "teamsnap_team_id"))
+		.get();
+	const teamIdStr = teamIdRow?.value as string;
 
 	if (!token || !teamIdStr)
 		return c.json(
@@ -36,9 +48,12 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 
 	try {
 		// Load previously saved mappings
-		const savedMappingsStr = (await c.env.DB.prepare(
-			"SELECT value FROM kv_store WHERE key = 'teamsnap_mappings'",
-		).first("value")) as string;
+		const savedMappingsRow = await db
+			.select({ value: kvStore.value })
+			.from(kvStore)
+			.where(eq(kvStore.key, "teamsnap_mappings"))
+			.get();
+		const savedMappingsStr = savedMappingsRow?.value as string;
 		const savedMappings = savedMappingsStr ? JSON.parse(savedMappingsStr) : {};
 
 		// Merge saved mappings with any new ones from the UI
@@ -84,9 +99,14 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		}
 
 		// 3. Match Members to our Slack DB
-		const slackUsers = await c.env.DB.prepare(
-			"SELECT user_id, name, role FROM slack_user",
-		).all();
+		const slackUsers = await db
+			.select({
+				user_id: slackUser.userId,
+				name: slackUser.name,
+				role: slackUser.role,
+			})
+			.from(slackUser)
+			.all();
 
 		const matchedMembers: {
 			id: number;
@@ -129,7 +149,7 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			const firstNameLower = firstName.toLowerCase();
 			const lastNameLower = lastName.toLowerCase();
 
-			const match = slackUsers.results.find(
+			const match = slackUsers.find(
 				(u) =>
 					(u.name as string).toLowerCase() === tsNameLower ||
 					(u.name as string).toLowerCase().includes(tsNameLower),
@@ -145,7 +165,7 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 				});
 			} else {
 				// Find partial matches for suggestions
-				const suggestions = slackUsers.results
+				const suggestions = slackUsers
 					.filter((u) => {
 						const uName = (u.name as string).toLowerCase();
 						const lastWord = uName.split(" ").pop();
@@ -183,7 +203,7 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 				},
 				matchedMembers,
 				unmatchedMembers,
-				slackUsers: slackUsers.results
+				slackUsers: slackUsers
 					.map((u) => ({
 						user_id: u.user_id as string,
 						name: u.name as string,
@@ -193,35 +213,45 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		}
 
 		// 4. Upsert Meetings
-		const statements: D1PreparedStatement[] = [];
+		const meetingInserts = [];
 		for (const event of events) {
 			const scheduledAt = Math.floor(
 				new Date(event.start_date).getTime() / 1000,
 			);
 			const name = event.name || "Team Meeting";
 
-			statements.push(
-				c.env.DB.prepare(`
-          INSERT INTO meeting (name, scheduled_at, channel_id, message_ts)
-          VALUES (?, ?, 'teamsnap-import', 'none')
-		  ON CONFLICT(channel_id, scheduled_at) DO NOTHING
-        `).bind(name, scheduledAt),
-			);
+			meetingInserts.push({
+				name,
+				scheduledAt,
+				channelId: "teamsnap-import",
+				messageTs: "none",
+			});
 		}
 
-		if (statements.length > 0) {
-			await c.env.DB.batch(statements);
-			statements.length = 0;
+		if (meetingInserts.length > 0) {
+			await db
+				.insert(meeting)
+				.values(meetingInserts)
+				.onConflictDoNothing()
+				.run();
 		}
 
-		const allMeetingsRes = await c.env.DB.prepare(
-			"SELECT id, name, scheduled_at FROM meeting WHERE channel_id = 'teamsnap-import'",
-		).all();
+		const allMeetingsRes = await db
+			.select({
+				id: meeting.id,
+				name: meeting.name,
+				scheduled_at: meeting.scheduledAt,
+			})
+			.from(meeting)
+			.where(eq(meeting.channelId, "teamsnap-import"))
+			.all();
+
 		const meetingMap = new Map(
-			allMeetingsRes.results.map((m) => [`${m.name}-${m.scheduled_at}`, m.id]),
+			allMeetingsRes.map((m) => [`${m.name}-${m.scheduled_at}`, m.id]),
 		);
 
 		let attendanceInserted = 0;
+		const attendanceInserts = [];
 		for (const avail of availabilities) {
 			const tsEventId = avail.event_id;
 			const tsMemberId = avail.member_id;
@@ -247,19 +277,27 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 				if (statusCode === 1) status = "yes";
 				if (statusCode === 0) status = "no";
 
-				statements.push(
-					c.env.DB.prepare(`
-            INSERT INTO attendance (meeting_id, user_id, status)
-            VALUES (?, ?, ?)
-            ON CONFLICT(meeting_id, user_id) DO UPDATE SET status = excluded.status
-          `).bind(meetingId, slackUserId, status),
-				);
+				attendanceInserts.push({
+					meetingId,
+					userId: slackUserId,
+					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+					status: status as any,
+				});
 				attendanceInserted++;
 			}
 		}
 
-		if (statements.length > 0) {
-			await c.env.DB.batch(statements);
+		if (attendanceInserts.length > 0) {
+			for (const att of attendanceInserts) {
+				await db
+					.insert(attendance)
+					.values(att)
+					.onConflictDoUpdate({
+						target: [attendance.meetingId, attendance.userId],
+						set: { status: att.status },
+					})
+					.run();
+			}
 		}
 
 		const stats = {
@@ -272,27 +310,42 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			lastSyncTime: Date.now(),
 		};
 
-		await c.env.DB.prepare(
-			"INSERT INTO kv_store (key, value) VALUES ('teamsnap_last_sync_stats', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-		)
-			.bind(JSON.stringify(stats))
+		await db
+			.insert(kvStore)
+			.values({
+				key: "teamsnap_last_sync_stats",
+				value: JSON.stringify(stats),
+			})
+			.onConflictDoUpdate({
+				target: kvStore.key,
+				set: { value: JSON.stringify(stats) },
+			})
 			.run();
 
 		// Save manual mappings
 		if (Object.keys(manualMappings).length > 0) {
-			const existingMappingsStr = (await c.env.DB.prepare(
-				"SELECT value FROM kv_store WHERE key = 'teamsnap_mappings'",
-			).first("value")) as string;
+			const existingMappingsRow = await db
+				.select({ value: kvStore.value })
+				.from(kvStore)
+				.where(eq(kvStore.key, "teamsnap_mappings"))
+				.get();
+			const existingMappingsStr = existingMappingsRow?.value as string;
 
 			const existingMappings = existingMappingsStr
 				? JSON.parse(existingMappingsStr)
 				: {};
 			const mergedMappings = { ...existingMappings, ...manualMappings };
 
-			await c.env.DB.prepare(
-				"INSERT INTO kv_store (key, value) VALUES ('teamsnap_mappings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-			)
-				.bind(JSON.stringify(mergedMappings))
+			await db
+				.insert(kvStore)
+				.values({
+					key: "teamsnap_mappings",
+					value: JSON.stringify(mergedMappings),
+				})
+				.onConflictDoUpdate({
+					target: kvStore.key,
+					set: { value: JSON.stringify(mergedMappings) },
+				})
 				.run();
 		}
 
@@ -302,7 +355,7 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			stats,
 			unmatchedMembers,
 			matchedMembers,
-			slackUsers: slackUsers.results
+			slackUsers: slackUsers
 				.map((u) => ({
 					user_id: u.user_id,
 					name: u.name,

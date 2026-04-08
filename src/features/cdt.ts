@@ -1,5 +1,8 @@
+import { count, eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import { SlackAPIClient } from "slack-web-api-client";
+import { cdtMember, cdt as cdtTable, slackUser } from "../db/schema";
 import type { Env } from "../index";
 import { deleteSlackUsergroup, getCdtFieldId } from "../lib/slack-cdt";
 import { isAdmin, setProfile } from "../lib/users";
@@ -180,23 +183,25 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 	slackApp.command("/cdt", async ({ context, payload }) => {
 		const userId = context.userId;
 		if (!userId) return;
+		const db = drizzle(env.DB);
 		const [adminUser, cdts] = await Promise.all([
 			isAdmin(env.DB, context.client, userId),
-			env.DB.prepare(`
-        SELECT c.id, c.name, c.handle, COUNT(m.user_id) as member_count
-        FROM cdt c LEFT JOIN cdt_member m ON m.cdt_id = c.id
-        GROUP BY c.id ORDER BY c.name
-      `).all<{
-				id: string;
-				name: string;
-				handle: string;
-				member_count: number;
-			}>(),
+			db
+				.select({
+					id: cdtTable.id,
+					name: cdtTable.name,
+					handle: cdtTable.handle,
+					member_count: count(cdtMember.userId),
+				})
+				.from(cdtTable)
+				.leftJoin(cdtMember, eq(cdtTable.id, cdtMember.cdtId))
+				.groupBy(cdtTable.id)
+				.orderBy(cdtTable.name),
 		]);
 
 		await context.client.views.open({
 			trigger_id: payload.trigger_id,
-			view: buildListModal(cdts.results, adminUser),
+			view: buildListModal(cdts, adminUser),
 		});
 	});
 
@@ -215,25 +220,31 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		if (!value) return;
 		const cdtId = String(value);
 
-		const cdtRow = await env.DB.prepare(
-			"SELECT id, name, channel_id FROM cdt WHERE id = ?",
-		)
-			.bind(cdtId)
-			.first<{ id: string; name: string; channel_id: string }>();
+		const db = drizzle(env.DB);
+
+		const cdtRow = await db
+			.select({
+				id: cdtTable.id,
+				name: cdtTable.name,
+				channel_id: cdtTable.channelId,
+			})
+			.from(cdtTable)
+			.where(eq(cdtTable.id, cdtId))
+			.get();
 
 		if (!cdtRow) return;
 
-		const members = await env.DB.prepare(
-			"SELECT user_id FROM cdt_member WHERE cdt_id = ?",
-		)
-			.bind(cdtId)
-			.all<{ user_id: string }>();
+		const members = await db
+			.select({ user_id: cdtMember.userId })
+			.from(cdtMember)
+			.where(eq(cdtMember.cdtId, cdtId))
+			.all();
 
 		await context.client.views.push({
 			trigger_id: (payload as { trigger_id: string }).trigger_id,
 			view: buildEditModal(
 				cdtRow,
-				members.results.map((r) => r.user_id),
+				members.map((r) => r.user_id),
 			),
 		});
 	});
@@ -248,43 +259,44 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		if (!value) return;
 		const cdtId = String(value);
 
-		const cdtRow = await env.DB.prepare(
-			"SELECT id, name, handle FROM cdt WHERE id = ?",
-		)
-			.bind(cdtId)
-			.first<{ id: string; name: string; handle: string }>();
+		const db = drizzle(env.DB);
+		const cdtRow = await db
+			.select({ id: cdtTable.id, name: cdtTable.name, handle: cdtTable.handle })
+			.from(cdtTable)
+			.where(eq(cdtTable.id, cdtId))
+			.get();
 		if (!cdtRow) return;
 
-		const members = await env.DB.prepare(
-			"SELECT user_id FROM cdt_member WHERE cdt_id = ?",
-		)
-			.bind(cdtId)
-			.all<{ user_id: string }>();
+		const members = await db
+			.select({ user_id: cdtMember.userId })
+			.from(cdtMember)
+			.where(eq(cdtMember.cdtId, cdtId))
+			.all();
 
 		const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
 
 		await Promise.all([
 			deleteSlackUsergroup(adminClient, cdtId, cdtRow.name, cdtRow.handle),
-			...members.results.map(({ user_id }) =>
+			...members.map(({ user_id }) =>
 				setProfile(adminClient, user_id, { [getCdtFieldId(env)]: "" }),
 			),
 		]);
 
-		await env.DB.prepare("DELETE FROM cdt WHERE id = ?").bind(cdtId).run();
+		await db.delete(cdtTable).where(eq(cdtTable.id, cdtId)).run();
 
 		const [freshCdts] = await Promise.all([
-			env.DB.prepare(`
-        SELECT c.id, c.name, c.handle, COUNT(u.user_id) as member_count
-        FROM cdt c 
-        LEFT JOIN cdt_member m ON m.cdt_id = c.id
-        LEFT JOIN slack_user u ON u.user_id = m.user_id
-        GROUP BY c.id ORDER BY c.name
-      `).all<{
-				id: string;
-				name: string;
-				handle: string;
-				member_count: number;
-			}>(),
+			db
+				.select({
+					id: cdtTable.id,
+					name: cdtTable.name,
+					handle: cdtTable.handle,
+					member_count: count(slackUser.userId),
+				})
+				.from(cdtTable)
+				.leftJoin(cdtMember, eq(cdtTable.id, cdtMember.cdtId))
+				.leftJoin(slackUser, eq(cdtMember.userId, slackUser.userId))
+				.groupBy(cdtTable.id)
+				.orderBy(cdtTable.name),
 		]);
 
 		const rootViewId = (payload as { view: { root_view_id: string } }).view
@@ -311,7 +323,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			rootViewId
 				? context.client.views.update({
 						view_id: rootViewId,
-						view: buildListModal(freshCdts.results, true),
+						view: buildListModal(freshCdts, true),
 					})
 				: Promise.resolve(),
 		]);
@@ -325,8 +337,13 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			const name: string = (flat.cdt_name as any)?.value ?? "";
 			const handle = `${slugify(name)}-cdt`;
 
+			const db = drizzle(env.DB);
 			const [existingName, ugList] = await Promise.all([
-				env.DB.prepare("SELECT id FROM cdt WHERE name = ?").bind(name).first(),
+				db
+					.select({ id: cdtTable.id })
+					.from(cdtTable)
+					.where(eq(cdtTable.name, name))
+					.get(),
 				req.context.client.usergroups.list({
 					include_disabled: true,
 					include_users: true,
@@ -372,6 +389,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					(flat.cdt_members as any)?.selected_users ?? [];
 				const handle = `${slugify(name)}-cdt`;
 
+				const db = drizzle(env.DB);
 				const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
 
 				const ugRes = await adminClient.usergroups.create({
@@ -382,17 +400,24 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				const usergroupId = (ugRes as { usergroup: { id: string } }).usergroup
 					.id;
 
-				await env.DB.prepare(
-					"INSERT INTO cdt (id, name, handle, channel_id) VALUES (?, ?, ?, ?)",
-				)
-					.bind(usergroupId, name, handle, channelId)
+				await db
+					.insert(cdtTable)
+					.values({
+						id: usergroupId,
+						name,
+						handle,
+						channelId,
+					})
 					.run();
 
 				for (const userId of members) {
-					await env.DB.prepare(
-						"INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET cdt_id = excluded.cdt_id",
-					)
-						.bind(userId, usergroupId)
+					await db
+						.insert(cdtMember)
+						.values({ userId, cdtId: usergroupId })
+						.onConflictDoUpdate({
+							target: cdtMember.userId,
+							set: { cdtId: usergroupId },
+						})
 						.run();
 					await setProfile(adminClient, userId, { [getCdtFieldId(env)]: name });
 				}
@@ -440,30 +465,31 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 					(flat.cdt_members as any)?.selected_users ?? [];
 
-				const currentRows = await env.DB.prepare(
-					"SELECT user_id FROM cdt_member WHERE cdt_id = ?",
-				)
-					.bind(cdtId)
-					.all<{ user_id: string }>();
-				const currentSet = new Set(currentRows.results.map((r) => r.user_id));
+				const db = drizzle(env.DB);
+				const currentRows = await db
+					.select({ user_id: cdtMember.userId })
+					.from(cdtMember)
+					.where(eq(cdtMember.cdtId, cdtId))
+					.all();
+				const currentSet = new Set(currentRows.map((r) => r.user_id));
 				const newSet = new Set(newMembers);
 
 				const added = newMembers.filter((id) => !currentSet.has(id));
 				const removed = [...currentSet].filter((id) => !newSet.has(id));
 
-				await env.DB.prepare(
-					"UPDATE cdt SET name = ?, channel_id = ? WHERE id = ?",
-				)
-					.bind(newName, newChannelId, cdtId)
+				await db
+					.update(cdtTable)
+					.set({ name: newName, channelId: newChannelId })
+					.where(eq(cdtTable.id, cdtId))
 					.run();
 
 				const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
 
 				for (const userId of added) {
-					await env.DB.prepare(
-						"INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET cdt_id = excluded.cdt_id",
-					)
-						.bind(userId, cdtId)
+					await db
+						.insert(cdtMember)
+						.values({ userId, cdtId })
+						.onConflictDoUpdate({ target: cdtMember.userId, set: { cdtId } })
 						.run();
 					await setProfile(adminClient, userId, {
 						[getCdtFieldId(env)]: newName,
@@ -471,11 +497,7 @@ const cdt = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				}
 
 				for (const userId of removed) {
-					await env.DB.prepare(
-						"DELETE FROM cdt_member WHERE user_id = ? AND cdt_id = ?",
-					)
-						.bind(userId, cdtId)
-						.run();
+					await db.delete(cdtMember).where(eq(cdtMember.userId, userId)).run();
 					await setProfile(adminClient, userId, { [getCdtFieldId(env)]: "" });
 				}
 

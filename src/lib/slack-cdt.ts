@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import type { SlackAPIClient } from "slack-web-api-client";
+import { cdt, cdtMember } from "../db/schema";
 import type { Env } from "../index";
 import { setProfile } from "./users";
 
@@ -7,24 +10,27 @@ export function getCdtFieldId(bindings: Env) {
 }
 
 export async function syncCdtUsers(
-	db: D1Database,
+	d1: D1Database,
 	adminClient: SlackAPIClient,
 	cdtId: string,
 	bindings: Env,
 ) {
-	const cdtRow = await db
-		.prepare("SELECT name FROM cdt WHERE id = ?")
-		.bind(cdtId)
-		.first<{ name: string }>();
+	const db = drizzle(d1);
+	const cdtRows = await db
+		.select({ name: cdt.name })
+		.from(cdt)
+		.where(eq(cdt.id, cdtId))
+		.limit(1);
+	const cdtRow = cdtRows[0];
 
 	if (!cdtRow) return;
 
 	const members = await db
-		.prepare("SELECT user_id FROM cdt_member WHERE cdt_id = ?")
-		.bind(cdtId)
-		.all<{ user_id: string }>();
+		.select({ user_id: cdtMember.userId })
+		.from(cdtMember)
+		.where(eq(cdtMember.cdtId, cdtId));
 
-	const memberIds = members.results.map((r) => r.user_id);
+	const memberIds = members.map((r) => r.user_id);
 
 	await adminClient.usergroups.users
 		.update({

@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { SlackAPIClient } from "slack-web-api-client";
+import { slackUser, webSession } from "../../db/schema";
 import type { Env } from "../../index";
 import { buildOAuthUrl, exchangeCode } from "../lib/auth";
 
@@ -38,26 +41,36 @@ auth.get("/callback", async (c) => {
 		const userAny = userInfo.user as any;
 		const is_admin = userAny?.is_admin || userAny?.is_owner ? 1 : 0;
 
-		await c.env.DB.prepare(
-			`INSERT INTO slack_user (user_id, name, avatar_url, is_admin, last_synced)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET
-         name = excluded.name,
-         avatar_url = excluded.avatar_url,
-         is_admin = excluded.is_admin,
-         last_synced = excluded.last_synced`,
-		)
-			.bind(userId, name, avatarUrl, is_admin, now)
-			.run();
+		const db = drizzle(c.env.DB);
+
+		await db
+			.insert(slackUser)
+			.values({
+				userId,
+				name,
+				avatarUrl,
+				isAdmin: is_admin,
+				lastSynced: now,
+			})
+			.onConflictDoUpdate({
+				target: slackUser.userId,
+				set: {
+					name,
+					avatarUrl,
+					isAdmin: is_admin,
+					lastSynced: now,
+				},
+			});
 
 		const sessionId =
 			crypto.randomUUID().replace(/-/g, "") +
 			crypto.randomUUID().replace(/-/g, "");
-		await c.env.DB.prepare(
-			"INSERT INTO web_session (id, user_id, expires_at) VALUES (?, ?, ?)",
-		)
-			.bind(sessionId, userId, now + 30 * 24 * 60 * 60)
-			.run();
+
+		await db.insert(webSession).values({
+			id: sessionId,
+			userId,
+			expiresAt: now + 30 * 24 * 60 * 60,
+		});
 
 		setCookie(c, "session", sessionId, {
 			httpOnly: true,
@@ -74,10 +87,10 @@ auth.get("/callback", async (c) => {
 
 auth.post("/logout", async (c) => {
 	const token = getCookie(c, "session");
-	if (token)
-		await c.env.DB.prepare("DELETE FROM web_session WHERE id = ?")
-			.bind(token)
-			.run();
+	if (token) {
+		const db = drizzle(c.env.DB);
+		await db.delete(webSession).where(eq(webSession.id, token));
+	}
 	deleteCookie(c, "session");
 	return c.json({ ok: true });
 });

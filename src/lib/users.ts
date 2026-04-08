@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import type { SlackAPIClient } from "slack-web-api-client";
+import { slackUser } from "../db/schema";
 
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
 
@@ -12,18 +15,28 @@ export interface SlackUser {
 }
 
 export async function getUser(
-	db: D1Database,
+	d1: D1Database,
 	client: SlackAPIClient,
 	userId: string,
 ): Promise<SlackUser> {
+	const db = drizzle(d1);
 	const now = Math.floor(Date.now() / 1000);
-	const cached = await db
-		.prepare("SELECT * FROM slack_user WHERE user_id = ?")
-		.bind(userId)
-		.first<SlackUser>();
+	const cachedRows = await db
+		.select()
+		.from(slackUser)
+		.where(eq(slackUser.userId, userId))
+		.limit(1);
+	const cached = cachedRows[0];
 
-	if (cached && now - cached.last_synced < SEVEN_DAYS) {
-		return cached;
+	if (cached && now - cached.lastSynced < SEVEN_DAYS) {
+		return {
+			user_id: cached.userId,
+			name: cached.name,
+			avatar_url: cached.avatarUrl,
+			is_admin: cached.isAdmin,
+			role: cached.role,
+			last_synced: cached.lastSynced,
+		};
 	}
 
 	const result = await client.users.info({ user: userId });
@@ -39,17 +52,23 @@ export async function getUser(
 	const is_admin = u.is_admin === true || u.is_owner === true ? 1 : 0;
 
 	await db
-		.prepare(`
-    INSERT INTO slack_user (user_id, name, avatar_url, is_admin, last_synced)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT (user_id) DO UPDATE SET
-      name        = excluded.name,
-      avatar_url  = excluded.avatar_url,
-      is_admin    = excluded.is_admin,
-      last_synced = excluded.last_synced
-  `)
-		.bind(userId, name, avatar_url, is_admin, now)
-		.run();
+		.insert(slackUser)
+		.values({
+			userId,
+			name,
+			avatarUrl: avatar_url,
+			isAdmin: is_admin,
+			lastSynced: now,
+		})
+		.onConflictDoUpdate({
+			target: slackUser.userId,
+			set: {
+				name,
+				avatarUrl: avatar_url,
+				isAdmin: is_admin,
+				lastSynced: now,
+			},
+		});
 
 	return {
 		user_id: userId,

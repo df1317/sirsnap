@@ -1,8 +1,11 @@
+import { and, eq, gt, inArray, lte, ne } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { SlackAPIClient } from "slack-web-api-client";
+import { attendance, meeting, pendingAnnouncement } from "../db/schema";
 import type { Env } from "../index";
 
 export function buildAnnouncementBlocks(
-	meeting: {
+	m: {
 		id: number;
 		name: string;
 		description: string;
@@ -22,9 +25,9 @@ export function buildAnnouncementBlocks(
 		contextParts.push(`❌ Can't make it: ${mentionList(attendees.no)}`);
 	if (!contextParts.length) contextParts.push("No RSVPs yet");
 
-	let timeStr = `<!date^${meeting.scheduled_at}^{date_long_pretty} at {time}|${new Date(meeting.scheduled_at * 1000).toISOString()}>`;
-	if (meeting.end_time) {
-		timeStr += ` - <!date^${meeting.end_time}^{time}|${new Date(meeting.end_time * 1000).toISOString()}>`;
+	let timeStr = `<!date^${m.scheduled_at}^{date_long_pretty} at {time}|${new Date(m.scheduled_at * 1000).toISOString()}>`;
+	if (m.end_time) {
+		timeStr += ` - <!date^${m.end_time}^{time}|${new Date(m.end_time * 1000).toISOString()}>`;
 	}
 
 	return [
@@ -32,7 +35,7 @@ export function buildAnnouncementBlocks(
 			type: "section",
 			text: {
 				type: "mrkdwn",
-				text: `*${meeting.name}*${meeting.description ? `\n${meeting.description}` : ""}\n\n📅 ${timeStr}`,
+				text: `*${m.name}*${m.description ? `\n${m.description}` : ""}\n\n📅 ${timeStr}`,
 			},
 		},
 		{
@@ -47,20 +50,20 @@ export function buildAnnouncementBlocks(
 					type: "button",
 					text: { type: "plain_text", text: "yes" },
 					action_id: "rsvp_yes",
-					value: String(meeting.id),
+					value: String(m.id),
 					style: "primary",
 				},
 				{
 					type: "button",
 					text: { type: "plain_text", text: "maybe" },
 					action_id: "rsvp_maybe",
-					value: String(meeting.id),
+					value: String(m.id),
 				},
 				{
 					type: "button",
 					text: { type: "plain_text", text: "no" },
 					action_id: "rsvp_no",
-					value: String(meeting.id),
+					value: String(m.id),
 					style: "danger",
 				},
 			],
@@ -68,16 +71,16 @@ export function buildAnnouncementBlocks(
 	];
 }
 
-export function buildCancelledAnnouncementBlocks(meeting: {
+export function buildCancelledAnnouncementBlocks(m: {
 	name: string;
 	description: string;
 	scheduled_at: number;
 	end_time?: number | null;
 	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 }): any[] {
-	let timeStr = `<!date^${meeting.scheduled_at}^{date_long_pretty} at {time}|${new Date(meeting.scheduled_at * 1000).toISOString()}>`;
-	if (meeting.end_time) {
-		timeStr += ` - <!date^${meeting.end_time}^{time}|${new Date(meeting.end_time * 1000).toISOString()}>`;
+	let timeStr = `<!date^${m.scheduled_at}^{date_long_pretty} at {time}|${new Date(m.scheduled_at * 1000).toISOString()}>`;
+	if (m.end_time) {
+		timeStr += ` - <!date^${m.end_time}^{time}|${new Date(m.end_time * 1000).toISOString()}>`;
 	}
 
 	return [
@@ -85,7 +88,7 @@ export function buildCancelledAnnouncementBlocks(meeting: {
 			type: "section",
 			text: {
 				type: "mrkdwn",
-				text: `~*${meeting.name}*~${meeting.description ? `\n~${meeting.description}~` : ""}\n\n~📅 ${timeStr}~`,
+				text: `~*${m.name}*~${m.description ? `\n~${m.description}~` : ""}\n\n~📅 ${timeStr}~`,
 			},
 		},
 		{
@@ -100,8 +103,8 @@ export function buildCancelledAnnouncementBlocks(meeting: {
 export async function updateAnnouncement(
 	// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 	client: any,
-	db: D1Database,
-	meeting: {
+	d1: D1Database,
+	m: {
 		id: number;
 		name: string;
 		description: string;
@@ -112,33 +115,34 @@ export async function updateAnnouncement(
 		cancelled: number;
 	},
 ): Promise<void> {
-	if (!meeting.message_ts) return;
-	if (meeting.cancelled) {
+	if (!m.message_ts) return;
+	if (m.cancelled) {
 		await client.chat.update({
-			channel: meeting.channel_id,
-			ts: meeting.message_ts,
-			text: `[Cancelled] ${meeting.name}`,
-			blocks: buildCancelledAnnouncementBlocks(meeting),
+			channel: m.channel_id,
+			ts: m.message_ts,
+			text: `[Cancelled] ${m.name}`,
+			blocks: buildCancelledAnnouncementBlocks(m),
 		});
 		return;
 	}
+	const db = drizzle(d1);
 	const attendanceRows = await db
-		.prepare("SELECT user_id, status FROM attendance WHERE meeting_id = ?")
-		.bind(meeting.id)
-		.all<{ user_id: string; status: string }>();
+		.select({ user_id: attendance.userId, status: attendance.status })
+		.from(attendance)
+		.where(eq(attendance.meetingId, m.id));
 	const attendees = {
 		yes: [] as string[],
 		maybe: [] as string[],
 		no: [] as string[],
 	};
-	for (const row of attendanceRows.results) {
+	for (const row of attendanceRows) {
 		attendees[row.status as "yes" | "maybe" | "no"].push(row.user_id);
 	}
 	await client.chat.update({
-		channel: meeting.channel_id,
-		ts: meeting.message_ts,
-		text: `Meeting: ${meeting.name}`,
-		blocks: buildAnnouncementBlocks(meeting, attendees),
+		channel: m.channel_id,
+		ts: m.message_ts,
+		text: `Meeting: ${m.name}`,
+		blocks: buildAnnouncementBlocks(m, attendees),
 	});
 }
 
@@ -147,108 +151,97 @@ export async function checkPendingMeetings(env: Env) {
 	const twoWeeksInSeconds = 14 * 24 * 60 * 60;
 	const threshold = now + twoWeeksInSeconds;
 
-	// Find meetings that:
-	// - Have a channel_id set
-	// - Don't have a message_ts yet (haven't been announced)
-	// - Are scheduled to happen within the next 2 weeks
-	// - Haven't happened yet (scheduled_at > now)
-	// - Aren't cancelled
-	const pending = await env.DB.prepare(
-		`SELECT id, name, description, scheduled_at, channel_id 
-     FROM meeting 
-     WHERE channel_id != '' 
-       AND message_ts = '' 
-       AND cancelled = 0 
-       AND scheduled_at > ?
-       AND scheduled_at <= ?`,
-	)
-		.bind(now, threshold)
-		.all<{
-			id: number;
-			name: string;
-			description: string;
-			scheduled_at: number;
-			channel_id: string;
-		}>();
+	const db = drizzle(env.DB);
+	const pending = await db
+		.select({
+			id: meeting.id,
+			name: meeting.name,
+			description: meeting.description,
+			scheduled_at: meeting.scheduledAt,
+			channel_id: meeting.channelId,
+		})
+		.from(meeting)
+		.where(
+			and(
+				ne(meeting.channelId, ""),
+				eq(meeting.messageTs, ""),
+				eq(meeting.cancelled, 0),
+				gt(meeting.scheduledAt, now),
+				lte(meeting.scheduledAt, threshold),
+			),
+		);
 
-	if (!pending.results.length) return;
+	if (!pending.length) return;
 
 	const botClient = new SlackAPIClient(env.SLACK_BOT_TOKEN);
 
-	for (const meeting of pending.results) {
+	for (const m of pending) {
 		try {
 			await botClient.conversations
-				.join({ channel: meeting.channel_id })
+				.join({ channel: m.channel_id })
 				.catch(() => {});
 
-			const blocks = buildAnnouncementBlocks(meeting, {
+			const blocks = buildAnnouncementBlocks(m, {
 				yes: [],
 				maybe: [],
 				no: [],
 			});
 			const posted = (await botClient.chat.postMessage({
-				channel: meeting.channel_id,
-				text: `Meeting: ${meeting.name}`,
+				channel: m.channel_id,
+				text: `Meeting: ${m.name}`,
 				blocks,
 			})) as { ts?: string };
 
 			if (posted.ts) {
-				await env.DB.prepare("UPDATE meeting SET message_ts = ? WHERE id = ?")
-					.bind(posted.ts, meeting.id)
-					.run();
+				await db
+					.update(meeting)
+					.set({ messageTs: posted.ts })
+					.where(eq(meeting.id, m.id));
 			}
 		} catch (err) {
-			console.error(`Failed to announce pending meeting ${meeting.id}:`, err);
+			console.error(`Failed to announce pending meeting ${m.id}:`, err);
 		}
 	}
 }
 
 export async function flushPendingAnnouncements(env: Env) {
-	const pending = await env.DB.prepare(
-		`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, m.channel_id, m.message_ts, m.cancelled 
-		 FROM pending_announcement p
-		 JOIN meeting m ON m.id = p.meeting_id
-		 ORDER BY p.queued_at ASC
-		 LIMIT 50`,
-	).all<{
-		id: number;
-		name: string;
-		description: string;
-		scheduled_at: number;
-		end_time: number | null;
-		channel_id: string;
-		message_ts: string;
-		cancelled: number;
-	}>();
+	const db = drizzle(env.DB);
+	const pending = await db
+		.select({
+			id: meeting.id,
+			name: meeting.name,
+			description: meeting.description,
+			scheduled_at: meeting.scheduledAt,
+			end_time: meeting.endTime,
+			channel_id: meeting.channelId,
+			message_ts: meeting.messageTs,
+			cancelled: meeting.cancelled,
+		})
+		.from(pendingAnnouncement)
+		.innerJoin(meeting, eq(meeting.id, pendingAnnouncement.meetingId))
+		.orderBy(pendingAnnouncement.queuedAt)
+		.limit(50);
 
-	if (!pending.results.length) return;
+	if (!pending.length) return;
 
 	const botClient = new SlackAPIClient(env.SLACK_BOT_TOKEN);
 	const processedIds: number[] = [];
 
-	for (const meeting of pending.results) {
+	for (const m of pending) {
 		try {
-			if (meeting.message_ts) {
-				await updateAnnouncement(botClient, env.DB, meeting);
+			if (m.message_ts) {
+				await updateAnnouncement(botClient, env.DB, m);
 			}
-			processedIds.push(meeting.id);
+			processedIds.push(m.id);
 		} catch (err) {
-			console.error(
-				`Failed to update announcement for meeting ${meeting.id}:`,
-				err,
-			);
-			// Still mark as processed so it doesn't block the queue forever,
-			// it will just be retried next time someone RSVPs.
-			processedIds.push(meeting.id);
+			console.error(`Failed to update announcement for meeting ${m.id}:`, err);
+			processedIds.push(m.id);
 		}
 	}
 
 	if (processedIds.length > 0) {
-		const placeholders = processedIds.map(() => "?").join(",");
-		await env.DB.prepare(
-			`DELETE FROM pending_announcement WHERE meeting_id IN (${placeholders})`,
-		)
-			.bind(...processedIds)
-			.run();
+		await db
+			.delete(pendingAnnouncement)
+			.where(inArray(pendingAnnouncement.meetingId, processedIds));
 	}
 }

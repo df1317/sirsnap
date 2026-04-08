@@ -1,5 +1,21 @@
+import {
+	and,
+	asc,
+	count,
+	desc,
+	sql as drizzleSql,
+	eq,
+	gt,
+	isNotNull,
+	isNull,
+	lte,
+	ne,
+	or,
+} from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { SlackAPIClient } from "slack-web-api-client";
+import * as schema from "../db/schema";
 import type { Env } from "../index";
 import {
 	buildAnnouncementBlocks,
@@ -45,26 +61,28 @@ export function createWebApp(_env: Env) {
 		const token = filename?.replace(/\.ics$/, "");
 		if (!token) return c.text("Not found", 404);
 
-		const user = await c.env.DB.prepare(
-			"SELECT user_id, name FROM slack_user WHERE LOWER(calendar_token) = LOWER(?)",
-		)
-			.bind(token)
-			.first<{ user_id: string; name: string }>();
+		const db = drizzle(c.env.DB);
+		const user = await db
+			.select({ user_id: schema.slackUser.userId, name: schema.slackUser.name })
+			.from(schema.slackUser)
+			.where(
+				drizzleSql`LOWER(${schema.slackUser.calendarToken}) = LOWER(${token})`,
+			)
+			.get();
 
 		if (!user) return c.text("Not found", 404);
 
-		const rows = await c.env.DB.prepare(
-			`SELECT id, name, description, scheduled_at, end_time, cancelled
-			 FROM meeting
-			 ORDER BY scheduled_at ASC`,
-		).all<{
-			id: number;
-			name: string;
-			description: string;
-			scheduled_at: number;
-			end_time: number | null;
-			cancelled: number;
-		}>();
+		const meetings = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				cancelled: schema.meeting.cancelled,
+			})
+			.from(schema.meeting)
+			.orderBy(asc(schema.meeting.scheduledAt));
 
 		let ics = "BEGIN:VCALENDAR\r\n";
 		ics += "VERSION:2.0\r\n";
@@ -76,7 +94,7 @@ export function createWebApp(_env: Env) {
 		const now = `${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z`;
 		const baseUrl = new URL(c.req.url).origin;
 
-		for (const m of rows.results) {
+		for (const m of meetings) {
 			const start = `${
 				new Date(m.scheduled_at * 1000)
 					.toISOString()
@@ -151,81 +169,125 @@ export function createWebApp(_env: Env) {
 		const session = c.get("session")!;
 		const now = Math.floor(Date.now() / 1000);
 
-		const rows = await c.env.DB.prepare(
-			`SELECT m.scheduled_at
-       FROM attendance a
-       JOIN meeting m ON m.id = a.meeting_id
-       WHERE a.user_id = ? AND a.status = 'yes' AND m.scheduled_at < ? AND m.cancelled = 0`,
-		)
-			.bind(session.user_id, now)
-			.all<{ scheduled_at: number }>();
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({ scheduled_at: schema.meeting.scheduledAt })
+			.from(schema.attendance)
+			.innerJoin(
+				schema.meeting,
+				eq(schema.attendance.meetingId, schema.meeting.id),
+			)
+			.where(
+				and(
+					eq(schema.attendance.userId, session.user_id),
+					eq(schema.attendance.status, "yes"),
+					drizzleSql`${schema.meeting.scheduledAt} < ${now}`,
+					eq(schema.meeting.cancelled, 0),
+				),
+			)
+			.all();
 
-		return c.json(rows.results);
+		return c.json(rows);
 	});
 
 	api.get("/users", requireSession(), async (c) => {
-		const rows = await c.env.DB.prepare(
-			`SELECT u.user_id, u.name, u.avatar_url, u.role, u.is_admin,
-              cm.cdt_id, cdt.name AS cdt_name,
-              (SELECT COUNT(*) FROM attendance a WHERE a.user_id = u.user_id AND a.status = 'yes') AS meetings_attended
-       FROM slack_user u
-       LEFT JOIN cdt_member cm ON cm.user_id = u.user_id
-       LEFT JOIN cdt ON cdt.id = cm.cdt_id
-       ORDER BY u.name COLLATE NOCASE`,
-		).all<{
-			user_id: string;
-			name: string;
-			avatar_url: string;
-			role: string | null;
-			is_admin: number;
-			cdt_id: string | null;
-			cdt_name: string | null;
-			meetings_attended: number;
-		}>();
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				user_id: schema.slackUser.userId,
+				name: schema.slackUser.name,
+				avatar_url: schema.slackUser.avatarUrl,
+				role: schema.slackUser.role,
+				is_admin: schema.slackUser.isAdmin,
+				cdt_id: schema.cdtMember.cdtId,
+				cdt_name: schema.cdt.name,
+				meetings_attended:
+					drizzleSql<number>`(SELECT COUNT(*) FROM attendance a WHERE a.user_id = ${schema.slackUser.userId} AND a.status = 'yes')`.as(
+						"meetings_attended",
+					),
+			})
+			.from(schema.slackUser)
+			.leftJoin(
+				schema.cdtMember,
+				eq(schema.cdtMember.userId, schema.slackUser.userId),
+			)
+			.leftJoin(schema.cdt, eq(schema.cdt.id, schema.cdtMember.cdtId))
+			.orderBy(drizzleSql`${schema.slackUser.name} COLLATE NOCASE`)
+			.all();
 
 		c.header("Cache-Control", "no-store, max-age=0");
-		return c.json(
-			rows.results.map((r) => ({
-				...r,
-				is_admin: r.is_admin === 1,
-			})),
-		);
+		return c.json(rows.map((r) => ({ ...r, is_admin: r.is_admin === 1 })));
 	});
 
 	api.get("/cdts", requireSession(), async (c) => {
-		const rows = await c.env.DB.prepare(
-			`SELECT c.id, c.name, c.handle,
-              COUNT(u.user_id) AS member_count
-       FROM cdt c
-       LEFT JOIN cdt_member cm ON cm.cdt_id = c.id
-       LEFT JOIN slack_user u ON u.user_id = cm.user_id
-       GROUP BY c.id
-       ORDER BY c.name COLLATE NOCASE`,
-		).all<{ id: string; name: string; handle: string; member_count: number }>();
-		return c.json(rows.results);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.cdt.id,
+				name: schema.cdt.name,
+				handle: schema.cdt.handle,
+				member_count: count(schema.slackUser.userId),
+			})
+			.from(schema.cdt)
+			.leftJoin(schema.cdtMember, eq(schema.cdtMember.cdtId, schema.cdt.id))
+			.leftJoin(
+				schema.slackUser,
+				eq(schema.slackUser.userId, schema.cdtMember.userId),
+			)
+			.groupBy(schema.cdt.id)
+			.orderBy(drizzleSql`${schema.cdt.name} COLLATE NOCASE`)
+			.all();
+		return c.json(rows);
 	});
 
 	api.get("/meetings", requireSession(), async (c) => {
 		// biome-ignore lint/style/noNonNullAssertion: guaranteed by requireSession
 		const session = c.get("session")!;
 		const now = Math.floor(Date.now() / 1000);
-		const rows = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'yes') AS yes_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'maybe') AS maybe_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
-       FROM meeting m
-       LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE (m.scheduled_at > ? OR (m.end_time IS NOT NULL AND m.end_time > ?) OR (m.end_time IS NULL AND m.scheduled_at <= ? AND m.scheduled_at + (3 * 60 * 60) > ?)) AND m.cancelled = 0
-       ORDER BY m.scheduled_at`,
-		)
-			.bind(session.user_id, now, now, now, now)
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				my_status: schema.attendance.status,
+				my_note: schema.attendance.note,
+				yes_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'yes')`,
+				maybe_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'maybe')`,
+				no_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'no')`,
+			})
+			.from(schema.meeting)
+			.leftJoin(
+				schema.attendance,
+				and(
+					eq(schema.attendance.meetingId, schema.meeting.id),
+					eq(schema.attendance.userId, session.user_id),
+				),
+			)
+			.where(
+				and(
+					eq(schema.meeting.cancelled, 0),
+					or(
+						gt(schema.meeting.scheduledAt, now),
+						and(
+							isNotNull(schema.meeting.endTime),
+							gt(schema.meeting.endTime, now),
+						),
+						and(
+							isNull(schema.meeting.endTime),
+							lte(schema.meeting.scheduledAt, now),
+							drizzleSql`${schema.meeting.scheduledAt} + (3 * 60 * 60) > ${now}`,
+						),
+					),
+				),
+			)
+			.orderBy(asc(schema.meeting.scheduledAt))
 			.all();
 
-		// The SQLite query returns yes_count/maybe_count/no_count as BigInts or numbers.
-		// If they come back null due to an empty DB row, default to 0.
 		return c.json(
-			rows.results.map((r: Record<string, unknown>) => ({
+			rows.map((r) => ({
 				...r,
 				yes_count: Number(r.yes_count || 0),
 				maybe_count: Number(r.maybe_count || 0),
@@ -238,29 +300,42 @@ export function createWebApp(_env: Env) {
 		const id = Number(c.req.param("id"));
 		const token = c.req.param("token");
 
-		const user = await c.env.DB.prepare(
-			"SELECT user_id FROM slack_user WHERE LOWER(calendar_token) = LOWER(?)",
-		)
-			.bind(token)
-			.first<{ user_id: string }>();
+		const db = drizzle(c.env.DB);
+		const user = await db
+			.select({ user_id: schema.slackUser.userId })
+			.from(schema.slackUser)
+			.where(
+				drizzleSql`LOWER(${schema.slackUser.calendarToken}) = LOWER(${token})`,
+			)
+			.get();
 
 		if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-		const row = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'yes') AS yes_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'maybe') AS maybe_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
-       FROM meeting m
-       LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE m.id = ?`,
-		)
-			.bind(user.user_id, id)
-			.first<Record<string, unknown>>();
+		const row = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				my_status: schema.attendance.status,
+				my_note: schema.attendance.note,
+				yes_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'yes')`,
+				maybe_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'maybe')`,
+				no_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'no')`,
+			})
+			.from(schema.meeting)
+			.leftJoin(
+				schema.attendance,
+				and(
+					eq(schema.attendance.meetingId, schema.meeting.id),
+					eq(schema.attendance.userId, user.user_id),
+				),
+			)
+			.where(eq(schema.meeting.id, id))
+			.get();
 
-		if (!row) {
-			return c.json({ error: "Not found" }, 404);
-		}
+		if (!row) return c.json({ error: "Not found" }, 404);
 
 		return c.json({
 			...row,
@@ -276,21 +351,50 @@ export function createWebApp(_env: Env) {
 		const limit = parseInt(c.req.query("limit") || "20", 10);
 		const offset = parseInt(c.req.query("offset") || "0", 10);
 		const now = Math.floor(Date.now() / 1000);
-		const rows = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'yes') AS yes_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'maybe') AS maybe_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
-       FROM meeting m
-       LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE (m.end_time IS NOT NULL AND m.end_time <= ?) OR (m.end_time IS NULL AND m.scheduled_at + (3 * 60 * 60) <= ?) AND m.cancelled = 0
-       ORDER BY m.scheduled_at DESC LIMIT ? OFFSET ?`,
-		)
-			.bind(session.user_id, now, now, limit, offset)
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				my_status: schema.attendance.status,
+				my_note: schema.attendance.note,
+				yes_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'yes')`,
+				maybe_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'maybe')`,
+				no_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'no')`,
+			})
+			.from(schema.meeting)
+			.leftJoin(
+				schema.attendance,
+				and(
+					eq(schema.attendance.meetingId, schema.meeting.id),
+					eq(schema.attendance.userId, session.user_id),
+				),
+			)
+			.where(
+				and(
+					eq(schema.meeting.cancelled, 0),
+					or(
+						and(
+							isNotNull(schema.meeting.endTime),
+							lte(schema.meeting.endTime, now),
+						),
+						and(
+							isNull(schema.meeting.endTime),
+							drizzleSql`${schema.meeting.scheduledAt} + (3 * 60 * 60) <= ${now}`,
+						),
+					),
+				),
+			)
+			.orderBy(desc(schema.meeting.scheduledAt))
+			.limit(limit)
+			.offset(offset)
 			.all();
 
 		return c.json(
-			rows.results.map((r: Record<string, unknown>) => ({
+			rows.map((r) => ({
 				...r,
 				yes_count: Number(r.yes_count || 0),
 				maybe_count: Number(r.maybe_count || 0),
@@ -303,22 +407,32 @@ export function createWebApp(_env: Env) {
 		// biome-ignore lint/style/noNonNullAssertion: requireSession() middleware guarantees session exists
 		const session = c.get("session")!;
 		const id = Number(c.req.param("id"));
+		const db = drizzle(c.env.DB);
+		const row = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				my_status: schema.attendance.status,
+				my_note: schema.attendance.note,
+				yes_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'yes')`,
+				maybe_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'maybe')`,
+				no_count: drizzleSql<number>`(SELECT COUNT(*) FROM attendance WHERE meeting_id = ${schema.meeting.id} AND status = 'no')`,
+			})
+			.from(schema.meeting)
+			.leftJoin(
+				schema.attendance,
+				and(
+					eq(schema.attendance.meetingId, schema.meeting.id),
+					eq(schema.attendance.userId, session.user_id),
+				),
+			)
+			.where(eq(schema.meeting.id, id))
+			.get();
 
-		const row = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, a.status AS my_status, a.note AS my_note,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'yes') AS yes_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'maybe') AS maybe_count,
-              (SELECT COUNT(*) FROM attendance WHERE meeting_id = m.id AND status = 'no') AS no_count
-       FROM meeting m
-       LEFT JOIN attendance a ON a.meeting_id = m.id AND a.user_id = ?
-       WHERE m.id = ?`,
-		)
-			.bind(session.user_id, id)
-			.first<Record<string, unknown>>();
-
-		if (!row) {
-			return c.json({ error: "Not found" }, 404);
-		}
+		if (!row) return c.json({ error: "Not found" }, 404);
 
 		return c.json({
 			...row,
@@ -339,27 +453,41 @@ export function createWebApp(_env: Env) {
 		if (!["yes", "maybe", "no"].includes(status))
 			return c.json({ error: "Invalid status" }, 400);
 
-		const user = await c.env.DB.prepare(
-			"SELECT user_id FROM slack_user WHERE LOWER(calendar_token) = LOWER(?)",
-		)
-			.bind(token)
-			.first<{ user_id: string }>();
+		const db = drizzle(c.env.DB);
+		const user = await db
+			.select({ user_id: schema.slackUser.userId })
+			.from(schema.slackUser)
+			.where(
+				drizzleSql`LOWER(${schema.slackUser.calendarToken}) = LOWER(${token})`,
+			)
+			.get();
 
 		if (!user) return c.json({ error: "Unauthorized" }, 401);
 
 		const now = Math.floor(Date.now() / 1000);
 
-		await c.env.DB.batch([
-			c.env.DB.prepare(
-				`INSERT INTO attendance (meeting_id, user_id, status, note)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note`,
-			).bind(meetingId, user.user_id, status, note),
-			c.env.DB.prepare(
-				`INSERT INTO pending_announcement (meeting_id, queued_at) VALUES (?, ?)
-				 ON CONFLICT (meeting_id) DO UPDATE SET queued_at = excluded.queued_at`,
-			).bind(meetingId, now),
-		]);
+		await db
+			.insert(schema.attendance)
+			.values({
+				meetingId,
+				userId: user.user_id,
+				// biome-ignore lint/suspicious/noExplicitAny: status is validated above
+				status: status as any,
+				note,
+			})
+			.onConflictDoUpdate({
+				target: [schema.attendance.meetingId, schema.attendance.userId],
+				// biome-ignore lint/suspicious/noExplicitAny: status is validated above
+				set: { status: status as any, note },
+			});
+
+		await db
+			.insert(schema.pendingAnnouncement)
+			.values({ meetingId, queuedAt: now })
+			.onConflictDoUpdate({
+				target: schema.pendingAnnouncement.meetingId,
+				set: { queuedAt: now },
+			});
 
 		return c.json({ ok: true });
 	});
@@ -375,19 +503,31 @@ export function createWebApp(_env: Env) {
 		if (!["yes", "maybe", "no"].includes(status))
 			return c.json({ error: "Invalid status" }, 400);
 
+		const db = drizzle(c.env.DB);
 		const now = Math.floor(Date.now() / 1000);
 
-		await c.env.DB.batch([
-			c.env.DB.prepare(
-				`INSERT INTO attendance (meeting_id, user_id, status, note)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note`,
-			).bind(meetingId, session.user_id, status, note),
-			c.env.DB.prepare(
-				`INSERT INTO pending_announcement (meeting_id, queued_at) VALUES (?, ?)
-				 ON CONFLICT (meeting_id) DO UPDATE SET queued_at = excluded.queued_at`,
-			).bind(meetingId, now),
-		]);
+		await db
+			.insert(schema.attendance)
+			.values({
+				meetingId,
+				userId: session.user_id,
+				// biome-ignore lint/suspicious/noExplicitAny: status is validated above
+				status: status as any,
+				note,
+			})
+			.onConflictDoUpdate({
+				target: [schema.attendance.meetingId, schema.attendance.userId],
+				// biome-ignore lint/suspicious/noExplicitAny: status is validated above
+				set: { status: status as any, note },
+			});
+
+		await db
+			.insert(schema.pendingAnnouncement)
+			.values({ meetingId, queuedAt: now })
+			.onConflictDoUpdate({
+				target: schema.pendingAnnouncement.meetingId,
+				set: { queuedAt: now },
+			});
 
 		return c.json({ ok: true });
 	});
@@ -395,17 +535,25 @@ export function createWebApp(_env: Env) {
 	api.get("/users/:userId/punchcard", requireSession(), async (c) => {
 		const userId = c.req.param("userId");
 		const now = Math.floor(Date.now() / 1000);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({ scheduled_at: schema.meeting.scheduledAt })
+			.from(schema.attendance)
+			.innerJoin(
+				schema.meeting,
+				eq(schema.meeting.id, schema.attendance.meetingId),
+			)
+			.where(
+				and(
+					eq(schema.attendance.userId, userId),
+					eq(schema.attendance.status, "yes"),
+					drizzleSql`${schema.meeting.scheduledAt} < ${now}`,
+					eq(schema.meeting.cancelled, 0),
+				),
+			)
+			.all();
 
-		const rows = await c.env.DB.prepare(
-			`SELECT m.scheduled_at
-       FROM attendance a
-       JOIN meeting m ON m.id = a.meeting_id
-       WHERE a.user_id = ? AND a.status = 'yes' AND m.scheduled_at < ? AND m.cancelled = 0`,
-		)
-			.bind(userId, now)
-			.all<{ scheduled_at: number }>();
-
-		return c.json(rows.results);
+		return c.json(rows);
 	});
 
 	// Admin API
@@ -420,10 +568,13 @@ export function createWebApp(_env: Env) {
 		if (role && !validRoles.includes(role))
 			return c.json({ error: "Invalid role" }, 400);
 
+		const db = drizzle(c.env.DB);
 		for (const id of user_ids) {
-			await c.env.DB.prepare("UPDATE slack_user SET role = ? WHERE user_id = ?")
-				.bind(role ?? null, id)
-				.run();
+			await db
+				.update(schema.slackUser)
+				// biome-ignore lint/suspicious/noExplicitAny: role is validated above
+				.set({ role: role as any })
+				.where(eq(schema.slackUser.userId, id));
 		}
 
 		return c.json({ ok: true });
@@ -437,19 +588,20 @@ export function createWebApp(_env: Env) {
 		if (!user_ids?.length)
 			return c.json({ error: "No user IDs provided" }, 400);
 
+		const db = drizzle(c.env.DB);
 		const adminClient = new SlackAPIClient(c.env.SLACK_ADMIN_TOKEN);
 
 		if (cdt_id === null) {
 			for (const id of user_ids) {
-				const currentCdt = await c.env.DB.prepare(
-					"SELECT cdt_id FROM cdt_member WHERE user_id = ?",
-				)
-					.bind(id)
-					.first<{ cdt_id: string }>();
+				const currentCdt = await db
+					.select({ cdt_id: schema.cdtMember.cdtId })
+					.from(schema.cdtMember)
+					.where(eq(schema.cdtMember.userId, id))
+					.get();
 
-				await c.env.DB.prepare("DELETE FROM cdt_member WHERE user_id = ?")
-					.bind(id)
-					.run();
+				await db
+					.delete(schema.cdtMember)
+					.where(eq(schema.cdtMember.userId, id));
 				await clearCdtProfile(adminClient, id, c.env);
 
 				if (currentCdt) {
@@ -458,18 +610,19 @@ export function createWebApp(_env: Env) {
 			}
 		} else {
 			for (const id of user_ids) {
-				const currentCdt = await c.env.DB.prepare(
-					"SELECT cdt_id FROM cdt_member WHERE user_id = ?",
-				)
-					.bind(id)
-					.first<{ cdt_id: string }>();
+				const currentCdt = await db
+					.select({ cdt_id: schema.cdtMember.cdtId })
+					.from(schema.cdtMember)
+					.where(eq(schema.cdtMember.userId, id))
+					.get();
 
-				await c.env.DB.prepare(
-					`INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?)
-           ON CONFLICT (user_id) DO UPDATE SET cdt_id = excluded.cdt_id`,
-				)
-					.bind(id, cdt_id)
-					.run();
+				await db
+					.insert(schema.cdtMember)
+					.values({ userId: id, cdtId: cdt_id })
+					.onConflictDoUpdate({
+						target: schema.cdtMember.userId,
+						set: { cdtId: cdt_id },
+					});
 
 				if (currentCdt && currentCdt.cdt_id !== cdt_id) {
 					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
@@ -486,56 +639,64 @@ export function createWebApp(_env: Env) {
 		const validRoles = ["student", "mentor", "parent", "alumni"];
 		if (role && !validRoles.includes(role))
 			return c.json({ error: "Invalid role" }, 400);
-		await c.env.DB.prepare("UPDATE slack_user SET role = ? WHERE user_id = ?")
-			.bind(role ?? null, userId)
-			.run();
+		const db = drizzle(c.env.DB);
+		await db
+			.update(schema.slackUser)
+			// biome-ignore lint/suspicious/noExplicitAny: role is validated above
+			.set({ role: role as any })
+			.where(eq(schema.slackUser.userId, userId));
 		return c.json({ ok: true });
 	});
 
 	api.get("/admin/users/:userId/meetings", requireAdmin(), async (c) => {
 		const userId = c.req.param("userId");
-		const rows = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.scheduled_at, m.end_time, a.status, a.note
-       FROM attendance a
-       JOIN meeting m ON m.id = a.meeting_id
-       WHERE a.user_id = ?
-       ORDER BY m.scheduled_at DESC LIMIT 20`,
-		)
-			.bind(userId)
-			.all<{
-				id: number;
-				name: string;
-				scheduled_at: number;
-				end_time: number | null;
-				status: string;
-				note: string;
-			}>();
-		return c.json(rows.results);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				status: schema.attendance.status,
+				note: schema.attendance.note,
+			})
+			.from(schema.attendance)
+			.innerJoin(
+				schema.meeting,
+				eq(schema.meeting.id, schema.attendance.meetingId),
+			)
+			.where(eq(schema.attendance.userId, userId))
+			.orderBy(desc(schema.meeting.scheduledAt))
+			.limit(20)
+			.all();
+		return c.json(rows);
 	});
 
 	api.post("/admin/users/:userId/cdt", requireAdmin(), async (c) => {
 		const userId = c.req.param("userId");
 		const { cdt_id } = await c.req.json<{ cdt_id: string | null }>();
 
+		const db = drizzle(c.env.DB);
 		const adminClient = new SlackAPIClient(c.env.SLACK_ADMIN_TOKEN);
-		const currentCdt = await c.env.DB.prepare(
-			"SELECT cdt_id FROM cdt_member WHERE user_id = ?",
-		)
-			.bind(userId)
-			.first<{ cdt_id: string }>();
+		const currentCdt = await db
+			.select({ cdt_id: schema.cdtMember.cdtId })
+			.from(schema.cdtMember)
+			.where(eq(schema.cdtMember.userId, userId))
+			.get();
 
 		if (cdt_id === null) {
-			await c.env.DB.prepare("DELETE FROM cdt_member WHERE user_id = ?")
-				.bind(userId)
-				.run();
+			await db
+				.delete(schema.cdtMember)
+				.where(eq(schema.cdtMember.userId, userId));
 			await clearCdtProfile(adminClient, userId, c.env);
 		} else {
-			await c.env.DB.prepare(
-				`INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET cdt_id = excluded.cdt_id`,
-			)
-				.bind(userId, cdt_id)
-				.run();
+			await db
+				.insert(schema.cdtMember)
+				.values({ userId, cdtId: cdt_id })
+				.onConflictDoUpdate({
+					target: schema.cdtMember.userId,
+					set: { cdtId: cdt_id },
+				});
 		}
 
 		if (currentCdt && currentCdt.cdt_id !== cdt_id) {
@@ -549,52 +710,61 @@ export function createWebApp(_env: Env) {
 	});
 
 	api.get("/admin/cdts", requireAdmin(), async (c) => {
-		const rows = await c.env.DB.prepare(
-			`SELECT c.id, c.name, c.handle, c.channel_id,
-              COUNT(u.user_id) AS member_count
-       FROM cdt c
-       LEFT JOIN cdt_member cm ON cm.cdt_id = c.id
-       LEFT JOIN slack_user u ON u.user_id = cm.user_id
-       GROUP BY c.id
-       ORDER BY c.name COLLATE NOCASE`,
-		).all<{
-			id: string;
-			name: string;
-			handle: string;
-			channel_id: string;
-			member_count: number;
-		}>();
-		return c.json(rows.results);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.cdt.id,
+				name: schema.cdt.name,
+				handle: schema.cdt.handle,
+				channel_id: schema.cdt.channelId,
+				member_count: count(schema.slackUser.userId),
+			})
+			.from(schema.cdt)
+			.leftJoin(schema.cdtMember, eq(schema.cdtMember.cdtId, schema.cdt.id))
+			.leftJoin(
+				schema.slackUser,
+				eq(schema.slackUser.userId, schema.cdtMember.userId),
+			)
+			.groupBy(schema.cdt.id)
+			.orderBy(drizzleSql`${schema.cdt.name} COLLATE NOCASE`)
+			.all();
+		return c.json(rows);
 	});
 
 	api.get("/admin/cdts/:id", requireAdmin(), async (c) => {
 		const id = c.req.param("id");
-		const cdt = await c.env.DB.prepare(
-			"SELECT id, name, handle, channel_id FROM cdt WHERE id = ?",
-		)
-			.bind(id)
-			.first<{
-				id: string;
-				name: string;
-				handle: string;
-				channel_id: string;
-			}>();
-		if (!cdt) return c.json({ error: "Not found" }, 404);
+		const db = drizzle(c.env.DB);
+		const cdtRow = await db
+			.select({
+				id: schema.cdt.id,
+				name: schema.cdt.name,
+				handle: schema.cdt.handle,
+				channel_id: schema.cdt.channelId,
+			})
+			.from(schema.cdt)
+			.where(eq(schema.cdt.id, id))
+			.get();
+		if (!cdtRow) return c.json({ error: "Not found" }, 404);
 
-		const members = await c.env.DB.prepare(
-			`SELECT u.user_id, u.name, u.avatar_url
-       FROM cdt_member cm
-       JOIN slack_user u ON u.user_id = cm.user_id
-       WHERE cm.cdt_id = ?
-       ORDER BY u.name COLLATE NOCASE`,
-		)
-			.bind(id)
-			.all<{ user_id: string; name: string; avatar_url: string }>();
+		const members = await db
+			.select({
+				user_id: schema.slackUser.userId,
+				name: schema.slackUser.name,
+				avatar_url: schema.slackUser.avatarUrl,
+			})
+			.from(schema.cdtMember)
+			.innerJoin(
+				schema.slackUser,
+				eq(schema.slackUser.userId, schema.cdtMember.userId),
+			)
+			.where(eq(schema.cdtMember.cdtId, id))
+			.orderBy(drizzleSql`${schema.slackUser.name} COLLATE NOCASE`)
+			.all();
 
 		return c.json({
-			...cdt,
-			member_count: members.results.length,
-			members: members.results,
+			...cdtRow,
+			member_count: members.length,
+			members,
 		});
 	});
 
@@ -635,30 +805,31 @@ export function createWebApp(_env: Env) {
 		if (!groupId)
 			return c.json({ error: "Failed to create Slack usergroup" }, 500);
 
-		await c.env.DB.prepare(
-			"INSERT INTO cdt (id, name, handle, channel_id) VALUES (?, ?, ?, ?)",
-		)
-			.bind(groupId, name, finalHandle, channel_id ?? null)
-			.run();
+		const db = drizzle(c.env.DB);
+		await db.insert(schema.cdt).values({
+			id: groupId,
+			name,
+			handle: finalHandle,
+			channelId: channel_id ?? "",
+		});
 
-		const cdt = await c.env.DB.prepare(
-			`SELECT c.id, c.name, c.handle, c.channel_id, 0 AS member_count FROM cdt c WHERE c.id = ?`,
-		)
-			.bind(groupId)
-			.first<{
-				id: string;
-				name: string;
-				handle: string;
-				channel_id: string;
-				member_count: number;
-			}>();
+		const cdtRow = await db
+			.select({
+				id: schema.cdt.id,
+				name: schema.cdt.name,
+				handle: schema.cdt.handle,
+				channel_id: schema.cdt.channelId,
+			})
+			.from(schema.cdt)
+			.where(eq(schema.cdt.id, groupId))
+			.get();
 
 		if (channel_id && groupId) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
 			await sendWelcomeMessage(botClient, groupId, channel_id, name);
 		}
 
-		return c.json(cdt, 201);
+		return c.json({ ...cdtRow, member_count: 0 }, 201);
 	});
 
 	api.put("/admin/cdts/:id", requireAdmin(), async (c) => {
@@ -668,61 +839,57 @@ export function createWebApp(_env: Env) {
 			channel_id?: string;
 			members?: string[];
 		}>();
-		const fields: string[] = [];
-		const values: (string | null)[] = [];
+		const db = drizzle(c.env.DB);
 
-		if (body.name !== undefined) {
-			fields.push("name = ?");
-			values.push(body.name);
-		}
-		if (body.channel_id !== undefined) {
-			fields.push("channel_id = ?");
-			values.push(body.channel_id);
-		}
+		// biome-ignore lint/suspicious/noExplicitAny: dynamic update set
+		const updateSet: Record<string, any> = {};
+		if (body.name !== undefined) updateSet.name = body.name;
+		if (body.channel_id !== undefined) updateSet.channelId = body.channel_id;
 
-		if (fields.length > 0) {
-			values.push(id);
-			await c.env.DB.prepare(`UPDATE cdt SET ${fields.join(", ")} WHERE id = ?`)
-				.bind(...values)
-				.run();
+		if (Object.keys(updateSet).length > 0) {
+			await db.update(schema.cdt).set(updateSet).where(eq(schema.cdt.id, id));
 		}
 
 		if (body.members !== undefined) {
 			const adminClient = new SlackAPIClient(c.env.SLACK_ADMIN_TOKEN);
 
-			const currentRows = await c.env.DB.prepare(
-				"SELECT user_id FROM cdt_member WHERE cdt_id = ?",
-			)
-				.bind(id)
-				.all<{ user_id: string }>();
-			const currentSet = new Set(currentRows.results.map((r) => r.user_id));
+			const currentRows = await db
+				.select({ user_id: schema.cdtMember.userId })
+				.from(schema.cdtMember)
+				.where(eq(schema.cdtMember.cdtId, id))
+				.all();
+			const currentSet = new Set(currentRows.map((r) => r.user_id));
 			const newSet = new Set(body.members);
 
 			const added = body.members.filter((uid) => !currentSet.has(uid));
 			const removed = [...currentSet].filter((uid) => !newSet.has(uid));
 
 			for (const userId of removed) {
-				await c.env.DB.prepare(
-					"DELETE FROM cdt_member WHERE user_id = ? AND cdt_id = ?",
-				)
-					.bind(userId, id)
-					.run();
+				await db
+					.delete(schema.cdtMember)
+					.where(
+						and(
+							eq(schema.cdtMember.userId, userId),
+							eq(schema.cdtMember.cdtId, id),
+						),
+					);
 				await clearCdtProfile(adminClient, userId, c.env);
 			}
 
 			for (const userId of added) {
-				const currentCdt = await c.env.DB.prepare(
-					"SELECT cdt_id FROM cdt_member WHERE user_id = ?",
-				)
-					.bind(userId)
-					.first<{ cdt_id: string }>();
+				const currentCdt = await db
+					.select({ cdt_id: schema.cdtMember.cdtId })
+					.from(schema.cdtMember)
+					.where(eq(schema.cdtMember.userId, userId))
+					.get();
 
-				await c.env.DB.prepare(
-					`INSERT INTO cdt_member (user_id, cdt_id) VALUES (?, ?)
-           ON CONFLICT (user_id) DO UPDATE SET cdt_id = excluded.cdt_id`,
-				)
-					.bind(userId, id)
-					.run();
+				await db
+					.insert(schema.cdtMember)
+					.values({ userId, cdtId: id })
+					.onConflictDoUpdate({
+						target: schema.cdtMember.userId,
+						set: { cdtId: id },
+					});
 
 				if (currentCdt && currentCdt.cdt_id !== id) {
 					await syncCdtUsers(c.env.DB, adminClient, currentCdt.cdt_id, c.env);
@@ -730,7 +897,7 @@ export function createWebApp(_env: Env) {
 			}
 
 			await syncCdtUsers(c.env.DB, adminClient, id, c.env);
-		} else if (fields.length === 0) {
+		} else if (Object.keys(updateSet).length === 0) {
 			return c.json({ error: "No fields to update" }, 400);
 		}
 
@@ -739,79 +906,101 @@ export function createWebApp(_env: Env) {
 
 	api.delete("/admin/cdts/:id", requireAdmin(), async (c) => {
 		const id = c.req.param("id");
-		const cdtRow = await c.env.DB.prepare(
-			"SELECT id, name, handle FROM cdt WHERE id = ?",
-		)
-			.bind(id)
-			.first<{ id: string; name: string; handle: string }>();
+		const db = drizzle(c.env.DB);
+		const cdtRow = await db
+			.select({
+				id: schema.cdt.id,
+				name: schema.cdt.name,
+				handle: schema.cdt.handle,
+			})
+			.from(schema.cdt)
+			.where(eq(schema.cdt.id, id))
+			.get();
 
 		if (!cdtRow) return c.json({ error: "Not found" }, 404);
 
-		const members = await c.env.DB.prepare(
-			"SELECT user_id FROM cdt_member WHERE cdt_id = ?",
-		)
-			.bind(id)
-			.all<{ user_id: string }>();
+		const members = await db
+			.select({ user_id: schema.cdtMember.userId })
+			.from(schema.cdtMember)
+			.where(eq(schema.cdtMember.cdtId, id))
+			.all();
 
 		const adminClient = new SlackAPIClient(c.env.SLACK_ADMIN_TOKEN);
 
 		await Promise.all([
 			deleteSlackUsergroup(adminClient, id, cdtRow.name, cdtRow.handle),
-			...members.results.map(({ user_id }) =>
+			...members.map(({ user_id }) =>
 				clearCdtProfile(adminClient, user_id, c.env),
 			),
 		]);
 
-		await c.env.DB.prepare("DELETE FROM cdt WHERE id = ?").bind(id).run();
+		await db.delete(schema.cdt).where(eq(schema.cdt.id, id));
 		return c.json({ ok: true });
 	});
 
 	api.get("/admin/meetings", requireAdmin(), async (c) => {
-		const rows = await c.env.DB.prepare(
-			`SELECT m.id, m.name, m.description, m.scheduled_at, m.end_time, m.channel_id, m.message_ts, m.cancelled, m.series_id,
-         COALESCE(SUM(CASE WHEN a.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-         COALESCE(SUM(CASE WHEN a.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
-         COALESCE(SUM(CASE WHEN a.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count
-       FROM meeting m LEFT JOIN attendance a ON a.meeting_id = m.id
-       WHERE (m.end_time IS NOT NULL AND m.end_time > strftime('%s', 'now')) OR (m.end_time IS NULL AND m.scheduled_at + (3 * 60 * 60) > strftime('%s', 'now')) OR m.scheduled_at > strftime('%s', 'now')
-       GROUP BY m.id ORDER BY m.scheduled_at ASC LIMIT 100`,
-		).all<{
-			id: number;
-			name: string;
-			description: string;
-			scheduled_at: number;
-			end_time: number | null;
-			channel_id: string;
-			message_ts: string;
-			cancelled: number;
-			series_id: number | null;
-			yes_count: number;
-			maybe_count: number;
-			no_count: number;
-		}>();
-		return c.json(
-			rows.results.map((r) => ({ ...r, cancelled: r.cancelled === 1 })),
-		);
+		const now = Math.floor(Date.now() / 1000);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				channel_id: schema.meeting.channelId,
+				message_ts: schema.meeting.messageTs,
+				cancelled: schema.meeting.cancelled,
+				series_id: schema.meeting.seriesId,
+				yes_count: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${schema.attendance.status} = 'yes' THEN 1 ELSE 0 END), 0)`,
+				maybe_count: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${schema.attendance.status} = 'maybe' THEN 1 ELSE 0 END), 0)`,
+				no_count: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${schema.attendance.status} = 'no' THEN 1 ELSE 0 END), 0)`,
+			})
+			.from(schema.meeting)
+			.leftJoin(
+				schema.attendance,
+				eq(schema.attendance.meetingId, schema.meeting.id),
+			)
+			.where(
+				or(
+					and(
+						isNotNull(schema.meeting.endTime),
+						gt(schema.meeting.endTime, now),
+					),
+					and(
+						isNull(schema.meeting.endTime),
+						drizzleSql`${schema.meeting.scheduledAt} + (3 * 60 * 60) > ${now}`,
+					),
+					gt(schema.meeting.scheduledAt, now),
+				),
+			)
+			.groupBy(schema.meeting.id)
+			.orderBy(asc(schema.meeting.scheduledAt))
+			.limit(100)
+			.all();
+		return c.json(rows.map((r) => ({ ...r, cancelled: r.cancelled === 1 })));
 	});
 
 	api.get("/admin/meetings/:id/attendance", requireAdmin(), async (c) => {
 		const id = Number(c.req.param("id"));
-		const rows = await c.env.DB.prepare(
-			`SELECT a.user_id, a.status, a.note, u.name, u.avatar_url
-       FROM attendance a
-       JOIN slack_user u ON u.user_id = a.user_id
-       WHERE a.meeting_id = ?
-       ORDER BY u.name COLLATE NOCASE`,
-		)
-			.bind(id)
-			.all<{
-				user_id: string;
-				status: string;
-				note: string;
-				name: string;
-				avatar_url: string;
-			}>();
-		return c.json(rows.results);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				user_id: schema.attendance.userId,
+				status: schema.attendance.status,
+				note: schema.attendance.note,
+				name: schema.slackUser.name,
+				avatar_url: schema.slackUser.avatarUrl,
+			})
+			.from(schema.attendance)
+			.innerJoin(
+				schema.slackUser,
+				eq(schema.slackUser.userId, schema.attendance.userId),
+			)
+			.where(eq(schema.attendance.meetingId, id))
+			.orderBy(drizzleSql`${schema.slackUser.name} COLLATE NOCASE`)
+			.all();
+		return c.json(rows);
 	});
 
 	api.post("/admin/meetings", requireAdmin(), async (c) => {
@@ -831,21 +1020,22 @@ export function createWebApp(_env: Env) {
 
 		let message_ts: string | null = null;
 
-		const result = await c.env.DB.prepare(
-			`INSERT INTO meeting (name, description, scheduled_at, end_time, channel_id, message_ts, cancelled)
-       VALUES (?, ?, ?, ?, ?, ?, 0)`,
-		)
-			.bind(
+		const db = drizzle(c.env.DB);
+		const result = await db
+			.insert(schema.meeting)
+			.values({
 				name,
 				description,
-				scheduled_at,
-				end_time ?? null,
-				channel_id ?? null,
-				"", // Temporary empty message_ts
-			)
-			.run();
+				scheduledAt: scheduled_at,
+				endTime: end_time ?? null,
+				channelId: channel_id ?? "",
+				messageTs: "",
+				cancelled: 0,
+			})
+			.returning({ id: schema.meeting.id })
+			.get();
 
-		const id = result.meta.last_row_id as number;
+		const id = result!.id;
 
 		if (channel_id && shouldAnnounceNow) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
@@ -865,9 +1055,10 @@ export function createWebApp(_env: Env) {
 			message_ts = posted.ts ?? null;
 
 			if (message_ts) {
-				await c.env.DB.prepare("UPDATE meeting SET message_ts = ? WHERE id = ?")
-					.bind(message_ts, id)
-					.run();
+				await db
+					.update(schema.meeting)
+					.set({ messageTs: message_ts })
+					.where(eq(schema.meeting.id, id));
 			}
 		}
 
@@ -898,50 +1089,43 @@ export function createWebApp(_env: Env) {
 			scheduled_at?: number;
 			end_time?: number | null;
 		}>();
-		const fields: string[] = [];
-		const values: (string | number | null)[] = [];
-		if (body.name !== undefined) {
-			fields.push("name = ?");
-			values.push(body.name);
-		}
-		if (body.description !== undefined) {
-			fields.push("description = ?");
-			values.push(body.description);
-		}
-		if (body.scheduled_at !== undefined) {
-			fields.push("scheduled_at = ?");
-			values.push(body.scheduled_at);
-		}
-		if (body.end_time !== undefined) {
-			fields.push("end_time = ?");
-			values.push(body.end_time);
-		}
-		if (fields.length === 0)
+
+		// biome-ignore lint/suspicious/noExplicitAny: dynamic update set
+		const updateSet: Record<string, any> = {};
+		if (body.name !== undefined) updateSet.name = body.name;
+		if (body.description !== undefined)
+			updateSet.description = body.description;
+		if (body.scheduled_at !== undefined)
+			updateSet.scheduledAt = body.scheduled_at;
+		if (body.end_time !== undefined) updateSet.endTime = body.end_time;
+
+		if (Object.keys(updateSet).length === 0)
 			return c.json({ error: "No fields to update" }, 400);
-		values.push(id);
-		await c.env.DB.prepare(
-			`UPDATE meeting SET ${fields.join(", ")} WHERE id = ?`,
-		)
-			.bind(...values)
-			.run();
 
-		const meeting = await c.env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(id)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
+		const db = drizzle(c.env.DB);
+		await db
+			.update(schema.meeting)
+			.set(updateSet)
+			.where(eq(schema.meeting.id, id));
 
-		if (meeting) {
+		const meetingRow = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				channel_id: schema.meeting.channelId,
+				message_ts: schema.meeting.messageTs,
+				cancelled: schema.meeting.cancelled,
+			})
+			.from(schema.meeting)
+			.where(eq(schema.meeting.id, id))
+			.get();
+
+		if (meetingRow) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
-			await updateAnnouncement(botClient, c.env.DB, meeting).catch((err) =>
+			await updateAnnouncement(botClient, c.env.DB, meetingRow).catch((err) =>
 				console.error("meeting update announcement failed:", err),
 			);
 		}
@@ -952,28 +1136,31 @@ export function createWebApp(_env: Env) {
 	api.post("/admin/meetings/:id/cancel", requireAdmin(), async (c) => {
 		const id = Number(c.req.param("id"));
 		const { cancelled } = await c.req.json<{ cancelled: boolean }>();
-		await c.env.DB.prepare("UPDATE meeting SET cancelled = ? WHERE id = ?")
-			.bind(cancelled ? 1 : 0, id)
-			.run();
+		const db = drizzle(c.env.DB);
+		await db
+			.update(schema.meeting)
+			.set({ cancelled: cancelled ? 1 : 0 })
+			.where(eq(schema.meeting.id, id));
 
-		const meeting = await c.env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(id)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
+		const meetingRow = await db
+			.select({
+				id: schema.meeting.id,
+				name: schema.meeting.name,
+				description: schema.meeting.description,
+				scheduled_at: schema.meeting.scheduledAt,
+				end_time: schema.meeting.endTime,
+				channel_id: schema.meeting.channelId,
+				message_ts: schema.meeting.messageTs,
+				cancelled: schema.meeting.cancelled,
+			})
+			.from(schema.meeting)
+			.where(eq(schema.meeting.id, id))
+			.get();
 
-		if (meeting) {
+		if (meetingRow) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
 			c.executionCtx.waitUntil(
-				updateAnnouncement(botClient, c.env.DB, meeting).catch((err) =>
+				updateAnnouncement(botClient, c.env.DB, meetingRow).catch((err) =>
 					console.error("cancel announcement update failed:", err),
 				),
 			);
@@ -1016,19 +1203,19 @@ export function createWebApp(_env: Env) {
 		if (dates.length === 0)
 			return c.json({ error: "No occurrences generated" }, 400);
 
-		const seriesResult = await c.env.DB.prepare(
-			`INSERT INTO meeting_series (name, description, days_of_week, time_of_day, end_date)
-       VALUES (?, ?, ?, ?, ?)`,
-		)
-			.bind(
+		const db = drizzle(c.env.DB);
+		const seriesResult = await db
+			.insert(schema.meetingSeries)
+			.values({
 				name,
 				description,
-				JSON.stringify(days_of_week),
-				time_of_day_minutes,
-				end_date,
-			)
-			.run();
-		const seriesId = seriesResult.meta.last_row_id as number;
+				daysOfWeek: JSON.stringify(days_of_week),
+				timeOfDay: time_of_day_minutes,
+				endDate: end_date,
+			})
+			.returning({ id: schema.meetingSeries.id })
+			.get();
+		const seriesId = seriesResult!.id;
 
 		const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
 		const created: {
@@ -1046,22 +1233,21 @@ export function createWebApp(_env: Env) {
 			const shouldAnnounceNow = ts <= now + twoWeeksInSeconds;
 			const end_time = duration_minutes ? ts + duration_minutes * 60 : null;
 
-			const result = await c.env.DB.prepare(
-				`INSERT INTO meeting (series_id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-			)
-				.bind(
+			const result = await db
+				.insert(schema.meeting)
+				.values({
 					seriesId,
 					name,
 					description,
-					ts,
-					end_time,
-					channel_id ?? null,
-					"", // Temporary empty message_ts
-				)
-				.run();
-
-			const id = result.meta.last_row_id as number;
+					scheduledAt: ts,
+					endTime: end_time,
+					channelId: channel_id ?? "",
+					messageTs: "",
+					cancelled: 0,
+				})
+				.returning({ id: schema.meeting.id })
+				.get();
+			const id = result!.id;
 
 			if (channel_id && shouldAnnounceNow) {
 				try {
@@ -1079,11 +1265,10 @@ export function createWebApp(_env: Env) {
 				message_ts = posted.ts ?? null;
 
 				if (message_ts) {
-					await c.env.DB.prepare(
-						"UPDATE meeting SET message_ts = ? WHERE id = ?",
-					)
-						.bind(message_ts, id)
-						.run();
+					await db
+						.update(schema.meeting)
+						.set({ messageTs: message_ts })
+						.where(eq(schema.meeting.id, id));
 				}
 			}
 
@@ -1113,13 +1298,14 @@ export function createWebApp(_env: Env) {
 
 		if (!body.url) return c.json({ error: "Missing url" }, 400);
 
+		const db = drizzle(c.env.DB);
 		let channel_id = body.channel_id;
 		if (!channel_id) {
-			const setting = await c.env.DB.prepare(
-				"SELECT value FROM kv_store WHERE key = ?",
-			)
-				.bind("default_channel")
-				.first<{ value: string }>();
+			const setting = await db
+				.select({ value: schema.kvStore.value })
+				.from(schema.kvStore)
+				.where(eq(schema.kvStore.key, "default_channel"))
+				.get();
 			if (setting?.value) {
 				channel_id = setting.value;
 			}
@@ -1158,12 +1344,18 @@ export function createWebApp(_env: Env) {
 			}
 
 			// Create a series for the imported calendar
-			const seriesResult = await c.env.DB.prepare(
-				"INSERT INTO meeting_series (name, description, days_of_week, time_of_day, end_date) VALUES (?, ?, '[]', 0, 0)",
-			)
-				.bind(`ICS Import: ${new Date().toLocaleDateString()}`, "")
-				.run();
-			const seriesId = seriesResult.meta.last_row_id as number;
+			const seriesResult = await db
+				.insert(schema.meetingSeries)
+				.values({
+					name: `ICS Import: ${new Date().toLocaleDateString()}`,
+					description: "",
+					daysOfWeek: "[]",
+					timeOfDay: 0,
+					endDate: 0,
+				})
+				.returning({ id: schema.meetingSeries.id })
+				.get();
+			const seriesId = seriesResult!.id;
 
 			for (const event of Object.values(events)) {
 				// @ts-expect-line TypeScript type for node-ical VEvent missing things
@@ -1181,19 +1373,15 @@ export function createWebApp(_env: Env) {
 				}
 
 				let defaultMeetingLength = 3;
-				const setting = await c.env.DB.prepare(
-					"SELECT value FROM kv_store WHERE key = ?",
-				)
-					.bind("default_meeting_length")
-					.first<{ value: string }>();
+				const setting = await db
+					.select({ value: schema.kvStore.value })
+					.from(schema.kvStore)
+					.where(eq(schema.kvStore.key, "default_meeting_length"))
+					.get();
 				if (setting?.value) {
 					defaultMeetingLength = parseInt(setting.value, 10);
 				}
 
-				// When parsing ICS `start` and `end` they come in as UTC strings but node-ical correctly
-				// adjusts them. The issue is likely the time of the worker comparing against `now`.
-				// By skipping the `end_time` logic and ensuring the fallback logic accurately checks
-				// the end of the "In Progress" window we avoid accidentally importing slightly past meetings.
 				const isPast = end_time
 					? end_time <= now
 					: scheduled_at + defaultMeetingLength * 60 * 60 <= now;
@@ -1225,11 +1413,16 @@ export function createWebApp(_env: Env) {
 					.replace(/\[CANCELLED\]\s*/i, "");
 
 				// Deduplication check
-				const existing = await c.env.DB.prepare(
-					"SELECT id FROM meeting WHERE name = ? AND scheduled_at = ?",
-				)
-					.bind(cleanName, scheduled_at)
-					.first<{ id: number }>();
+				const existing = await db
+					.select({ id: schema.meeting.id })
+					.from(schema.meeting)
+					.where(
+						and(
+							eq(schema.meeting.name, cleanName),
+							eq(schema.meeting.scheduledAt, scheduled_at),
+						),
+					)
+					.get();
 
 				if (existing) {
 					continue; // Skip if a meeting with the same name and start time already exists
@@ -1238,23 +1431,21 @@ export function createWebApp(_env: Env) {
 				let message_ts: string | null = null;
 				const shouldAnnounceNow = scheduled_at <= now + twoWeeksInSeconds;
 
-				const result = await c.env.DB.prepare(
-					`INSERT INTO meeting (series_id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				)
-					.bind(
+				const result = await db
+					.insert(schema.meeting)
+					.values({
 						seriesId,
-						cleanName,
+						name: cleanName,
 						description,
-						scheduled_at,
-						end_time,
-						channel_id ?? "", // Schema requires NOT NULL for channel_id
-						"", // Temporary empty message_ts
-						isCancelled ? 1 : 0,
-					)
-					.run();
-
-				const id = result.meta.last_row_id as number;
+						scheduledAt: scheduled_at,
+						endTime: end_time,
+						channelId: channel_id ?? "",
+						messageTs: "",
+						cancelled: isCancelled ? 1 : 0,
+					})
+					.returning({ id: schema.meeting.id })
+					.get();
+				const id = result!.id;
 
 				if (body.channel_id && shouldAnnounceNow && !isCancelled) {
 					try {
@@ -1270,11 +1461,10 @@ export function createWebApp(_env: Env) {
 						message_ts = posted.ts ?? null;
 
 						if (message_ts) {
-							await c.env.DB.prepare(
-								"UPDATE meeting SET message_ts = ? WHERE id = ?",
-							)
-								.bind(message_ts, id)
-								.run();
+							await db
+								.update(schema.meeting)
+								.set({ messageTs: message_ts })
+								.where(eq(schema.meeting.id, id));
 						}
 					} catch (err) {
 						console.error("Failed to announce imported meeting", err);
@@ -1306,19 +1496,27 @@ export function createWebApp(_env: Env) {
 
 	api.delete("/admin/meetings/:id", requireAdmin(), async (c) => {
 		const id = Number(c.req.param("id"));
-		const meeting = await c.env.DB.prepare(
-			"SELECT id, channel_id, message_ts FROM meeting WHERE id = ?",
-		)
-			.bind(id)
-			.first<{ id: number; channel_id: string; message_ts: string }>();
+		const db = drizzle(c.env.DB);
+		const meetingRow = await db
+			.select({
+				id: schema.meeting.id,
+				channel_id: schema.meeting.channelId,
+				message_ts: schema.meeting.messageTs,
+			})
+			.from(schema.meeting)
+			.where(eq(schema.meeting.id, id))
+			.get();
 
-		await c.env.DB.prepare("DELETE FROM meeting WHERE id = ?").bind(id).run();
+		await db.delete(schema.meeting).where(eq(schema.meeting.id, id));
 
-		if (meeting?.message_ts && meeting?.channel_id) {
+		if (meetingRow?.message_ts && meetingRow?.channel_id) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
 			c.executionCtx.waitUntil(
 				botClient.chat
-					.delete({ channel: meeting.channel_id, ts: meeting.message_ts })
+					.delete({
+						channel: meetingRow.channel_id,
+						ts: meetingRow.message_ts,
+					})
 					.catch(() => {}),
 			);
 		}
@@ -1333,146 +1531,161 @@ export function createWebApp(_env: Env) {
 
 	api.post("/admin/queue-announcements", requireAdmin(), async (c) => {
 		const now = Math.floor(Date.now() / 1000);
-		// Get all uncancelled meetings that haven't ended yet and have a message_ts
-		const activeMeetings = await c.env.DB.prepare(`
-			SELECT id 
-			FROM meeting 
-			WHERE cancelled = 0 
-				AND message_ts != '' 
-				AND channel_id != ''
-				AND (end_time IS NULL OR end_time > ?)
-		`)
-			.bind(now)
-			.all<{ id: number }>();
+		const db = drizzle(c.env.DB);
+		const activeMeetings = await db
+			.select({ id: schema.meeting.id })
+			.from(schema.meeting)
+			.where(
+				and(
+					eq(schema.meeting.cancelled, 0),
+					ne(schema.meeting.messageTs, ""),
+					ne(schema.meeting.channelId, ""),
+					or(isNull(schema.meeting.endTime), gt(schema.meeting.endTime, now)),
+				),
+			)
+			.all();
 
-		if (activeMeetings.results.length === 0) {
+		if (activeMeetings.length === 0) {
 			return c.json({ ok: true, count: 0 });
 		}
 
-		// Batch insert into pending_announcement
-		const statements = activeMeetings.results.map((m) =>
-			c.env.DB.prepare(`
-				INSERT INTO pending_announcement (meeting_id, queued_at) VALUES (?, ?)
-				ON CONFLICT (meeting_id) DO UPDATE SET queued_at = excluded.queued_at
-			`).bind(m.id, now),
-		);
-
-		// Execute in batches of 100 to avoid D1 limits
-		for (let i = 0; i < statements.length; i += 100) {
-			await c.env.DB.batch(statements.slice(i, i + 100));
+		for (const m of activeMeetings) {
+			await db
+				.insert(schema.pendingAnnouncement)
+				.values({ meetingId: m.id, queuedAt: now })
+				.onConflictDoUpdate({
+					target: schema.pendingAnnouncement.meetingId,
+					set: { queuedAt: now },
+				});
 		}
 
-		return c.json({ ok: true, count: activeMeetings.results.length });
+		return c.json({ ok: true, count: activeMeetings.length });
 	});
 
 	api.post("/admin/clear-db", requireAdmin(), async (c) => {
-		// Get the current user ID to preserve their admin status
 		const session = c.get("session");
 		const currentUserId = session?.user_id;
+		const db = drizzle(c.env.DB);
 
-		// Clear tables, preserving settings, sessions, and the current admin's user record
+		await db.delete(schema.attendance);
+		await db.delete(schema.pendingAnnouncement);
+		await db.delete(schema.meeting);
+		await db.delete(schema.meetingSeries);
+		await db.delete(schema.cdtMember);
+		await db.delete(schema.cdt);
+		await db.delete(schema.slackCache);
+
 		if (currentUserId) {
-			await c.env.DB.batch([
-				c.env.DB.prepare("DELETE FROM attendance"),
-				c.env.DB.prepare("DELETE FROM pending_announcement"),
-				c.env.DB.prepare("DELETE FROM meeting"),
-				c.env.DB.prepare("DELETE FROM meeting_series"),
-				c.env.DB.prepare("DELETE FROM cdt_member"),
-				c.env.DB.prepare("DELETE FROM cdt"),
-				c.env.DB.prepare("DELETE FROM slack_cache"),
-				c.env.DB.prepare("DELETE FROM slack_user WHERE user_id != ?").bind(
-					currentUserId,
-				),
-			]);
+			await db
+				.delete(schema.slackUser)
+				.where(ne(schema.slackUser.userId, currentUserId));
 		} else {
-			await c.env.DB.batch([
-				c.env.DB.prepare("DELETE FROM attendance"),
-				c.env.DB.prepare("DELETE FROM pending_announcement"),
-				c.env.DB.prepare("DELETE FROM meeting"),
-				c.env.DB.prepare("DELETE FROM meeting_series"),
-				c.env.DB.prepare("DELETE FROM cdt_member"),
-				c.env.DB.prepare("DELETE FROM cdt"),
-				c.env.DB.prepare("DELETE FROM slack_user"),
-				c.env.DB.prepare("DELETE FROM slack_cache"),
-			]);
+			await db.delete(schema.slackUser);
 		}
 
 		return c.json({ ok: true });
 	});
 
 	api.get("/admin/stats", requireAdmin(), async (c) => {
+		const now = Math.floor(Date.now() / 1000);
+		const db = drizzle(c.env.DB);
 		const [
-			users,
-			meetings,
-			pastMeetings,
-			pendingAnnouncements,
-			cdts,
-			attendance,
+			usersResult,
+			meetingsResult,
+			pastMeetingsResult,
+			pendingAnnouncementsResult,
+			cdtsResult,
+			attendanceResult,
 		] = await Promise.all([
-			c.env.DB.prepare("SELECT COUNT(*) as count FROM slack_user").first<{
-				count: number;
-			}>(),
-			c.env.DB.prepare(
-				"SELECT COUNT(*) as count FROM meeting WHERE cancelled = 0 AND (end_time IS NULL OR end_time > ?) AND (end_time IS NOT NULL OR scheduled_at + (3 * 60 * 60) > ?)",
-			)
-				.bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000))
-				.first<{ count: number }>(),
-			c.env.DB.prepare(
-				"SELECT COUNT(*) as count FROM meeting WHERE cancelled = 0 AND ((end_time IS NOT NULL AND end_time <= ?) OR (end_time IS NULL AND scheduled_at + (3 * 60 * 60) <= ?))",
-			)
-				.bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000))
-				.first<{ count: number }>(),
-			c.env.DB.prepare(
-				"SELECT COUNT(*) as count FROM pending_announcement",
-			).first<{ count: number }>(),
-			c.env.DB.prepare("SELECT COUNT(*) as count FROM cdt").first<{
-				count: number;
-			}>(),
-			c.env.DB.prepare("SELECT COUNT(*) as count FROM attendance").first<{
-				count: number;
-			}>(),
+			db.select({ count: count() }).from(schema.slackUser).get(),
+			db
+				.select({ count: count() })
+				.from(schema.meeting)
+				.where(
+					and(
+						eq(schema.meeting.cancelled, 0),
+						or(
+							and(
+								isNotNull(schema.meeting.endTime),
+								gt(schema.meeting.endTime, now),
+							),
+							and(
+								isNull(schema.meeting.endTime),
+								drizzleSql`${schema.meeting.scheduledAt} + (3 * 60 * 60) > ${now}`,
+							),
+						),
+					),
+				)
+				.get(),
+			db
+				.select({ count: count() })
+				.from(schema.meeting)
+				.where(
+					and(
+						eq(schema.meeting.cancelled, 0),
+						or(
+							and(
+								isNotNull(schema.meeting.endTime),
+								lte(schema.meeting.endTime, now),
+							),
+							and(
+								isNull(schema.meeting.endTime),
+								drizzleSql`${schema.meeting.scheduledAt} + (3 * 60 * 60) <= ${now}`,
+							),
+						),
+					),
+				)
+				.get(),
+			db.select({ count: count() }).from(schema.pendingAnnouncement).get(),
+			db.select({ count: count() }).from(schema.cdt).get(),
+			db.select({ count: count() }).from(schema.attendance).get(),
 		]);
 
 		return c.json({
-			users: users?.count ?? 0,
-			meetings: meetings?.count ?? 0,
-			pastMeetings: pastMeetings?.count ?? 0,
-			pendingAnnouncements: pendingAnnouncements?.count ?? 0,
-			cdts: cdts?.count ?? 0,
-			attendance: attendance?.count ?? 0,
+			users: usersResult?.count ?? 0,
+			meetings: meetingsResult?.count ?? 0,
+			pastMeetings: pastMeetingsResult?.count ?? 0,
+			pendingAnnouncements: pendingAnnouncementsResult?.count ?? 0,
+			cdts: cdtsResult?.count ?? 0,
+			attendance: attendanceResult?.count ?? 0,
 		});
 	});
 
 	api.get("/admin/settings/:key", requireAdmin(), async (c) => {
 		const key = c.req.param("key");
-		const row = await c.env.DB.prepare(
-			"SELECT value FROM kv_store WHERE key = ?",
-		)
-			.bind(key)
-			.first<{ value: string }>();
+		const db = drizzle(c.env.DB);
+		const row = await db
+			.select({ value: schema.kvStore.value })
+			.from(schema.kvStore)
+			.where(eq(schema.kvStore.key, key))
+			.get();
 		return c.json({ value: row?.value ?? null });
 	});
 
 	api.post("/admin/settings/:key", requireAdmin(), async (c) => {
 		const key = c.req.param("key");
 		const { value } = await c.req.json<{ value: string }>();
-		await c.env.DB.prepare(
-			"INSERT INTO kv_store (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-		)
-			.bind(key, value)
-			.run();
+		const db = drizzle(c.env.DB);
+		await db
+			.insert(schema.kvStore)
+			.values({ key, value })
+			.onConflictDoUpdate({ target: schema.kvStore.key, set: { value } });
 		return c.json({ ok: true });
 	});
 
 	api.get("/admin/slack/channels", requireAdmin(), async (c) => {
 		const now = Math.floor(Date.now() / 1000);
-		const cached = await c.env.DB.prepare(
-			"SELECT value, expires_at FROM slack_cache WHERE key = ?",
-		)
-			.bind("channels")
-			.first<{ value: string; expires_at: number }>();
+		const db = drizzle(c.env.DB);
+		const cached = await db
+			.select({
+				value: schema.slackCache.value,
+				expiresAt: schema.slackCache.expiresAt,
+			})
+			.from(schema.slackCache)
+			.where(eq(schema.slackCache.key, "channels"))
+			.get();
 
-		if (cached && cached.expires_at > now) {
+		if (cached && cached.expiresAt > now) {
 			return c.json(JSON.parse(cached.value));
 		}
 
@@ -1509,11 +1722,17 @@ export function createWebApp(_env: Env) {
 
 		allChannels.sort((a, b) => a.name.localeCompare(b.name));
 
-		await c.env.DB.prepare(
-			"INSERT INTO slack_cache (key, value, expires_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at",
-		)
-			.bind("channels", JSON.stringify(allChannels), now + 600)
-			.run();
+		await db
+			.insert(schema.slackCache)
+			.values({
+				key: "channels",
+				value: JSON.stringify(allChannels),
+				expiresAt: now + 600,
+			})
+			.onConflictDoUpdate({
+				target: schema.slackCache.key,
+				set: { value: JSON.stringify(allChannels), expiresAt: now + 600 },
+			});
 
 		return c.json(allChannels);
 	});

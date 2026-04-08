@@ -1,5 +1,7 @@
+import { drizzle } from "drizzle-orm/d1";
 import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
 import { SlackAPIClient } from "slack-web-api-client";
+import { slackUser } from "../db/schema";
 import type { Env } from "../index";
 import { isAdmin } from "../lib/admin";
 import { setProfile } from "../lib/users";
@@ -110,15 +112,20 @@ const roles = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				// Use admin user token for profile writes (bot tokens can't write other users' profiles)
 				const adminClient = new SlackAPIClient(env.SLACK_ADMIN_TOKEN);
 
+				const db = drizzle(env.DB);
 				for (const userId of userIds) {
 					await setProfile(adminClient, userId, {
 						[getRoleFieldId(env)]: role.charAt(0).toUpperCase() + role.slice(1),
 					});
-					await env.DB.prepare(`
-            INSERT INTO slack_user (user_id, role) VALUES (?, ?)
-            ON CONFLICT (user_id) DO UPDATE SET role = excluded.role
-          `)
-						.bind(userId, role)
+					await db
+						.insert(slackUser)
+						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+						.values({ userId, role: role as any })
+						.onConflictDoUpdate({
+							target: slackUser.userId,
+							// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+							set: { role: role as any },
+						})
 						.run();
 				}
 			} catch (err) {

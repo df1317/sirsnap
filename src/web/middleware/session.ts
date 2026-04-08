@@ -1,5 +1,8 @@
+import { and, eq, gt } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
+import { slackUser, webSession } from "../../db/schema";
 import type { Env } from "../../index";
 
 export type Session = {
@@ -20,14 +23,21 @@ export const sessionMiddleware = createMiddleware<{
 	const token = getCookie(c, "session");
 	if (token) {
 		const now = Math.floor(Date.now() / 1000);
-		const row = await c.env.DB.prepare(
-			`SELECT s.user_id, u.name, u.avatar_url, u.is_admin, u.role, u.calendar_token
-         FROM web_session s JOIN slack_user u ON u.user_id = s.user_id
-         WHERE s.id = ? AND s.expires_at > ?`,
-		)
-			.bind(token, now)
-			.first<Session>();
-		c.set("session", row ?? null);
+		const db = drizzle(c.env.DB);
+		const rows = await db
+			.select({
+				user_id: slackUser.userId,
+				name: slackUser.name,
+				avatar_url: slackUser.avatarUrl,
+				is_admin: slackUser.isAdmin,
+				role: slackUser.role,
+				calendar_token: slackUser.calendarToken,
+			})
+			.from(webSession)
+			.innerJoin(slackUser, eq(webSession.userId, slackUser.userId))
+			.where(and(eq(webSession.id, token), gt(webSession.expiresAt, now)));
+
+		c.set("session", rows.length > 0 ? rows[0] : null);
 	} else {
 		c.set("session", null);
 	}

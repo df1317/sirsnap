@@ -1,4 +1,11 @@
+import { and, asc, eq, gt } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import type { SlackApp, SlackEdgeAppEnv } from "slack-cloudflare-workers";
+import {
+	attendance,
+	meetingSeries,
+	meeting as meetingTable,
+} from "../db/schema";
 import type { Env } from "../index";
 import { isAdmin } from "../lib/admin";
 import {
@@ -361,26 +368,37 @@ async function refreshListView(
 	rootViewId: string,
 	isAdminUser: boolean,
 ): Promise<void> {
+	const db = drizzle(env.DB);
 	const now = Math.floor(Date.now() / 1000);
 	const [upcomingMeetings, cancelledMeetings] = await Promise.all([
-		env.DB.prepare(
-			"SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 0 ORDER BY scheduled_at LIMIT 15",
-		)
-			.bind(now)
-			.all<{ id: number; name: string; scheduled_at: number }>(),
-		env.DB.prepare(
-			"SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 1 ORDER BY scheduled_at LIMIT 10",
-		)
-			.bind(now)
-			.all<{ id: number; name: string; scheduled_at: number }>(),
+		db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				scheduled_at: meetingTable.scheduledAt,
+			})
+			.from(meetingTable)
+			.where(
+				and(gt(meetingTable.scheduledAt, now), eq(meetingTable.cancelled, 0)),
+			)
+			.orderBy(asc(meetingTable.scheduledAt))
+			.limit(15),
+		db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				scheduled_at: meetingTable.scheduledAt,
+			})
+			.from(meetingTable)
+			.where(
+				and(gt(meetingTable.scheduledAt, now), eq(meetingTable.cancelled, 1)),
+			)
+			.orderBy(asc(meetingTable.scheduledAt))
+			.limit(10),
 	]);
 	await client.views.update({
 		view_id: rootViewId,
-		view: buildListModal(
-			upcomingMeetings.results,
-			cancelledMeetings.results,
-			isAdminUser,
-		),
+		view: buildListModal(upcomingMeetings, cancelledMeetings, isAdminUser),
 	});
 }
 
@@ -434,27 +452,38 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const now = Math.floor(Date.now() / 1000);
 		const userId = context.userId;
 		if (!userId) return;
+		const db = drizzle(env.DB);
 		const [adminUser, upcomingMeetings, cancelledMeetings] = await Promise.all([
 			isAdmin(env.DB, context.client, userId),
-			env.DB.prepare(
-				"SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 0 ORDER BY scheduled_at LIMIT 15",
-			)
-				.bind(now)
-				.all<{ id: number; name: string; scheduled_at: number }>(),
-			env.DB.prepare(
-				"SELECT id, name, scheduled_at FROM meeting WHERE scheduled_at > ? AND cancelled = 1 ORDER BY scheduled_at LIMIT 10",
-			)
-				.bind(now)
-				.all<{ id: number; name: string; scheduled_at: number }>(),
+			db
+				.select({
+					id: meetingTable.id,
+					name: meetingTable.name,
+					scheduled_at: meetingTable.scheduledAt,
+				})
+				.from(meetingTable)
+				.where(
+					and(gt(meetingTable.scheduledAt, now), eq(meetingTable.cancelled, 0)),
+				)
+				.orderBy(asc(meetingTable.scheduledAt))
+				.limit(15),
+			db
+				.select({
+					id: meetingTable.id,
+					name: meetingTable.name,
+					scheduled_at: meetingTable.scheduledAt,
+				})
+				.from(meetingTable)
+				.where(
+					and(gt(meetingTable.scheduledAt, now), eq(meetingTable.cancelled, 1)),
+				)
+				.orderBy(asc(meetingTable.scheduledAt))
+				.limit(10),
 		]);
 
 		await context.client.views.open({
 			trigger_id: payload.trigger_id,
-			view: buildListModal(
-				upcomingMeetings.results,
-				cancelledMeetings.results,
-				adminUser,
-			),
+			view: buildListModal(upcomingMeetings, cancelledMeetings, adminUser),
 		});
 	});
 
@@ -471,26 +500,27 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const value = (payload as any).actions?.[0]?.value;
 		if (!value) return;
 		const meetingId = Number(value);
-		const meeting = await env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, end_time, channel_id, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(meetingId)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				end_time: number | null;
-				channel_id: string;
-				cancelled: number;
-			}>();
+		const db = drizzle(env.DB);
+		const meetingRow = await db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				description: meetingTable.description,
+				scheduled_at: meetingTable.scheduledAt,
+				end_time: meetingTable.endTime,
+				channel_id: meetingTable.channelId,
+				cancelled: meetingTable.cancelled,
+			})
+			.from(meetingTable)
+			.where(eq(meetingTable.id, meetingId))
+			.get();
 
-		if (!meeting) return;
+		if (!meetingRow) return;
 
 		await context.client.views.push({
 			// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 			trigger_id: (payload as any).trigger_id,
-			view: buildEditModal(meeting),
+			view: buildEditModal(meetingRow),
 		});
 	});
 
@@ -517,23 +547,26 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const meetingId = Number(value);
 		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
-		await env.DB.prepare("UPDATE meeting SET cancelled = 1 WHERE id = ?")
-			.bind(meetingId)
+		const db = drizzle(env.DB);
+		await db
+			.update(meetingTable)
+			.set({ cancelled: 1 })
+			.where(eq(meetingTable.id, meetingId))
 			.run();
-		const meeting = await env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(meetingId)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				end_time: number | null;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
+		const meeting = await db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				description: meetingTable.description,
+				scheduled_at: meetingTable.scheduledAt,
+				end_time: meetingTable.endTime,
+				channel_id: meetingTable.channelId,
+				message_ts: meetingTable.messageTs,
+				cancelled: meetingTable.cancelled,
+			})
+			.from(meetingTable)
+			.where(eq(meetingTable.id, meetingId))
+			.get();
 		if (meeting) {
 			await Promise.all([
 				context.client.views.update({
@@ -559,23 +592,26 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const meetingId = Number(value);
 		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
-		await env.DB.prepare("UPDATE meeting SET cancelled = 0 WHERE id = ?")
-			.bind(meetingId)
+		const db = drizzle(env.DB);
+		await db
+			.update(meetingTable)
+			.set({ cancelled: 0 })
+			.where(eq(meetingTable.id, meetingId))
 			.run();
-		const meeting = await env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(meetingId)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				end_time: number | null;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
+		const meeting = await db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				description: meetingTable.description,
+				scheduled_at: meetingTable.scheduledAt,
+				end_time: meetingTable.endTime,
+				channel_id: meetingTable.channelId,
+				message_ts: meetingTable.messageTs,
+				cancelled: meetingTable.cancelled,
+			})
+			.from(meetingTable)
+			.where(eq(meetingTable.id, meetingId))
+			.get();
 		if (meeting) {
 			await Promise.all([
 				context.client.views.update({
@@ -601,23 +637,22 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 		const meetingId = Number(value);
 		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const rootViewId = (payload as any).view.root_view_id;
-		const meeting = await env.DB.prepare(
-			"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-		)
-			.bind(meetingId)
-			.first<{
-				id: number;
-				name: string;
-				description: string;
-				scheduled_at: number;
-				end_time: number | null;
-				channel_id: string;
-				message_ts: string;
-				cancelled: number;
-			}>();
-		await env.DB.prepare("DELETE FROM meeting WHERE id = ?")
-			.bind(meetingId)
-			.run();
+		const db = drizzle(env.DB);
+		const meeting = await db
+			.select({
+				id: meetingTable.id,
+				name: meetingTable.name,
+				description: meetingTable.description,
+				scheduled_at: meetingTable.scheduledAt,
+				end_time: meetingTable.endTime,
+				channel_id: meetingTable.channelId,
+				message_ts: meetingTable.messageTs,
+				cancelled: meetingTable.cancelled,
+			})
+			.from(meetingTable)
+			.where(eq(meetingTable.id, meetingId))
+			.get();
+		await db.delete(meetingTable).where(eq(meetingTable.id, meetingId)).run();
 		await Promise.all([
 			context.client.views.update({
 				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
@@ -675,11 +710,19 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					const endUnix = Math.floor(endDate.getTime() / 1000);
 					const startUnix = Math.floor(Date.now() / 1000);
 
-					const series = await env.DB.prepare(
-						"INSERT INTO meeting_series (name, description, days_of_week, time_of_day, end_date) VALUES (?, ?, ?, ?, ?) RETURNING id",
-					)
-						.bind(name, description, JSON.stringify(days), timeOfDay, endUnix)
-						.first<{ id: number }>();
+					const db = drizzle(env.DB);
+					const seriesResult = await db
+						.insert(meetingSeries)
+						.values({
+							name,
+							description,
+							daysOfWeek: JSON.stringify(days),
+							timeOfDay,
+							endDate: endUnix,
+						})
+						.returning({ id: meetingSeries.id })
+						.get();
+					const series = seriesResult ? { id: seriesResult.id } : undefined;
 
 					if (!series) return;
 
@@ -692,19 +735,20 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 						const end_time = duration_minutes
 							? scheduled_at + duration_minutes * 60
 							: null;
-						const row = await env.DB.prepare(
-							"INSERT INTO meeting (series_id, name, description, scheduled_at, end_time, channel_id, message_ts) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
-						)
-							.bind(
-								series.id,
+						const rowResult = await db
+							.insert(meetingTable)
+							.values({
+								seriesId: series.id,
 								name,
 								description,
-								scheduled_at,
-								end_time,
-								channelId,
-								"",
-							)
-							.first<{ id: number }>();
+								scheduledAt: scheduled_at,
+								endTime: end_time,
+								channelId: channelId,
+								messageTs: "",
+							})
+							.returning({ id: meetingTable.id })
+							.get();
+						const row = rowResult ? { id: rowResult.id } : undefined;
 						if (!row) continue;
 						const post = await postWithJoin(client, channelId, {
 							channel: channelId,
@@ -714,11 +758,15 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 								{ yes: [], maybe: [], no: [] },
 							),
 						});
-						await env.DB.prepare(
-							"UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?",
-						)
-							// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
-							.bind((post as any).channel, (post as any).ts, row.id)
+						await db
+							.update(meetingTable)
+							.set({
+								// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+								channelId: (post as any).channel,
+								// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+								messageTs: (post as any).ts,
+							})
+							.where(eq(meetingTable.id, row.id))
 							.run();
 					}
 				} else {
@@ -729,11 +777,20 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					const end_time = duration_minutes
 						? scheduled_at + duration_minutes * 60
 						: null;
-					const row = await env.DB.prepare(
-						"INSERT INTO meeting (name, description, scheduled_at, end_time, channel_id, message_ts) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-					)
-						.bind(name, description, scheduled_at, end_time, channelId, "")
-						.first<{ id: number }>();
+					const db = drizzle(env.DB);
+					const rowResult = await db
+						.insert(meetingTable)
+						.values({
+							name,
+							description,
+							scheduledAt: scheduled_at,
+							endTime: end_time,
+							channelId: channelId,
+							messageTs: "",
+						})
+						.returning({ id: meetingTable.id })
+						.get();
+					const row = rowResult ? { id: rowResult.id } : undefined;
 					if (!row) return;
 					const post = await postWithJoin(client, channelId, {
 						channel: channelId,
@@ -743,11 +800,15 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 							{ yes: [], maybe: [], no: [] },
 						),
 					});
-					await env.DB.prepare(
-						"UPDATE meeting SET channel_id = ?, message_ts = ? WHERE id = ?",
-					)
-						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
-						.bind((post as any).channel, (post as any).ts, row.id)
+					await db
+						.update(meetingTable)
+						.set({
+							// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+							channelId: (post as any).channel,
+							// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+							messageTs: (post as any).ts,
+						})
+						.where(eq(meetingTable.id, row.id))
 						.run();
 				}
 			} catch (err) {
@@ -776,26 +837,33 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					: null;
 				const channelId: string = flat.channel?.selected_channel ?? "";
 
-				await env.DB.prepare(
-					"UPDATE meeting SET name = ?, description = ?, scheduled_at = ?, end_time = ?, channel_id = ? WHERE id = ?",
-				)
-					.bind(name, description, scheduled_at, end_time, channelId, meetingId)
+				const db = drizzle(env.DB);
+				await db
+					.update(meetingTable)
+					.set({
+						name,
+						description,
+						scheduledAt: scheduled_at,
+						endTime: end_time,
+						channelId: channelId,
+					})
+					.where(eq(meetingTable.id, meetingId))
 					.run();
 
-				const meeting = await env.DB.prepare(
-					"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts, cancelled FROM meeting WHERE id = ?",
-				)
-					.bind(meetingId)
-					.first<{
-						id: number;
-						name: string;
-						description: string;
-						scheduled_at: number;
-						end_time: number | null;
-						channel_id: string;
-						message_ts: string;
-						cancelled: number;
-					}>();
+				const meeting = await db
+					.select({
+						id: meetingTable.id,
+						name: meetingTable.name,
+						description: meetingTable.description,
+						scheduled_at: meetingTable.scheduledAt,
+						end_time: meetingTable.endTime,
+						channel_id: meetingTable.channelId,
+						message_ts: meetingTable.messageTs,
+						cancelled: meetingTable.cancelled,
+					})
+					.from(meetingTable)
+					.where(eq(meetingTable.id, meetingId))
+					.get();
 
 				if (meeting) await updateAnnouncement(req.context.client, env, meeting);
 			} catch (err) {
@@ -810,11 +878,12 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 			const value = (payload as any).actions?.[0]?.value;
 			if (!value) return;
 			const meetingId = Number(value);
-			const meeting = await env.DB.prepare(
-				"SELECT name FROM meeting WHERE id = ?",
-			)
-				.bind(meetingId)
-				.first<{ name: string }>();
+			const db = drizzle(env.DB);
+			const meeting = await db
+				.select({ name: meetingTable.name })
+				.from(meetingTable)
+				.where(eq(meetingTable.id, meetingId))
+				.get();
 			await context.client.views.open({
 				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 				trigger_id: (payload as any).trigger_id,
@@ -839,33 +908,42 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 				const note: string = flat.note?.value ?? "";
 				const userId = req.payload.user.id;
 
-				await env.DB.prepare(`
-          INSERT INTO attendance (meeting_id, user_id, status, note)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT (meeting_id, user_id) DO UPDATE SET status = excluded.status, note = excluded.note
-        `)
-					.bind(meetingId, userId, status, note)
+				const db = drizzle(env.DB);
+				await db
+					.insert(attendance)
+					.values({
+						meetingId,
+						userId,
+						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+						status: status as any,
+						note,
+					})
+					.onConflictDoUpdate({
+						target: [attendance.meetingId, attendance.userId],
+						// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+						set: { status: status as any, note },
+					})
 					.run();
 
 				const [attendanceRows, meeting] = await Promise.all([
-					env.DB.prepare(
-						"SELECT user_id, status FROM attendance WHERE meeting_id = ?",
-					)
-						.bind(meetingId)
-						.all<{ user_id: string; status: string }>(),
-					env.DB.prepare(
-						"SELECT id, name, description, scheduled_at, end_time, channel_id, message_ts FROM meeting WHERE id = ?",
-					)
-						.bind(meetingId)
-						.first<{
-							id: number;
-							name: string;
-							description: string;
-							scheduled_at: number;
-							end_time: number | null;
-							channel_id: string;
-							message_ts: string;
-						}>(),
+					db
+						.select({ user_id: attendance.userId, status: attendance.status })
+						.from(attendance)
+						.where(eq(attendance.meetingId, meetingId))
+						.all(),
+					db
+						.select({
+							id: meetingTable.id,
+							name: meetingTable.name,
+							description: meetingTable.description,
+							scheduled_at: meetingTable.scheduledAt,
+							end_time: meetingTable.endTime,
+							channel_id: meetingTable.channelId,
+							message_ts: meetingTable.messageTs,
+						})
+						.from(meetingTable)
+						.where(eq(meetingTable.id, meetingId))
+						.get(),
 				]);
 
 				const attendees = {
@@ -873,7 +951,7 @@ const meetings = async (slackApp: SlackApp<SlackEdgeAppEnv>, env: Env) => {
 					maybe: [] as string[],
 					no: [] as string[],
 				};
-				for (const row of attendanceRows.results) {
+				for (const row of attendanceRows) {
 					attendees[row.status as "yes" | "maybe" | "no"].push(row.user_id);
 				}
 

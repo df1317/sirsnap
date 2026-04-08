@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { attendance, kvStore, meeting, slackUser } from "../../db/schema";
@@ -256,7 +256,9 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		);
 
 		let attendanceInserted = 0;
-		const attendanceInserts = [];
+		// Use a map to deduplicate availabilities by meetingId + userId
+		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+		const attendanceInsertsMap = new Map<string, any>();
 		for (const avail of availabilities) {
 			const tsEventId = avail.event_id;
 			const tsMemberId = avail.member_id;
@@ -282,26 +284,47 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 				if (statusCode === 1) status = "yes";
 				if (statusCode === 0) status = "no";
 
-				attendanceInserts.push({
+				const key = `${meetingId}-${slackUserId}`;
+				// Overwrite with the latest status if there are duplicates from TS API
+				attendanceInsertsMap.set(key, {
 					meetingId,
 					userId: slackUserId,
 					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 					status: status as any,
 				});
-				attendanceInserted++;
 			}
 		}
 
+		const attendanceInserts = Array.from(attendanceInsertsMap.values());
+		attendanceInserted = attendanceInserts.length;
+
 		if (attendanceInserts.length > 0) {
 			for (const att of attendanceInserts) {
-				await db
-					.insert(attendance)
-					.values(att)
-					.onConflictDoUpdate({
-						target: [attendance.meetingId, attendance.userId],
-						set: { status: att.status },
-					})
-					.run();
+				const existingAtt = await db
+					.select()
+					.from(attendance)
+					.where(
+						and(
+							eq(attendance.meetingId, att.meetingId),
+							eq(attendance.userId, att.userId),
+						),
+					)
+					.get();
+
+				if (existingAtt) {
+					await db
+						.update(attendance)
+						.set({ status: att.status })
+						.where(
+							and(
+								eq(attendance.meetingId, att.meetingId),
+								eq(attendance.userId, att.userId),
+							),
+						)
+						.run();
+				} else {
+					await db.insert(attendance).values(att).run();
+				}
 			}
 		}
 

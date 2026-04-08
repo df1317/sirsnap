@@ -1035,7 +1035,8 @@ export function createWebApp(_env: Env) {
 			.returning({ id: schema.meeting.id })
 			.get();
 
-		const id = result!.id;
+		const id = result?.id;
+		if (!id) return c.json({ error: "Failed to insert meeting" }, 500);
 
 		if (channel_id && shouldAnnounceNow) {
 			const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
@@ -1215,7 +1216,9 @@ export function createWebApp(_env: Env) {
 			})
 			.returning({ id: schema.meetingSeries.id })
 			.get();
-		const seriesId = seriesResult!.id;
+		const seriesId = seriesResult?.id;
+		if (!seriesId)
+			return c.json({ error: "Failed to insert meeting series" }, 500);
 
 		const botClient = new SlackAPIClient(c.env.SLACK_BOT_TOKEN);
 		const created: {
@@ -1247,7 +1250,8 @@ export function createWebApp(_env: Env) {
 				})
 				.returning({ id: schema.meeting.id })
 				.get();
-			const id = result!.id;
+			const id = result?.id;
+			if (!id) continue;
 
 			if (channel_id && shouldAnnounceNow) {
 				try {
@@ -1355,7 +1359,8 @@ export function createWebApp(_env: Env) {
 				})
 				.returning({ id: schema.meetingSeries.id })
 				.get();
-			const seriesId = seriesResult!.id;
+			const seriesId = seriesResult?.id;
+			if (!seriesId) return c.json({ error: "Failed to insert series" }, 500);
 
 			for (const event of Object.values(events)) {
 				// @ts-expect-line TypeScript type for node-ical VEvent missing things
@@ -1445,7 +1450,8 @@ export function createWebApp(_env: Env) {
 					})
 					.returning({ id: schema.meeting.id })
 					.get();
-				const id = result!.id;
+				const id = result?.id;
+				if (!id) continue;
 
 				if (body.channel_id && shouldAnnounceNow && !isCancelled) {
 					try {

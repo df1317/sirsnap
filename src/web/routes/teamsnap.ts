@@ -1,7 +1,13 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
-import { attendance, kvStore, meeting, slackUser } from "../../db/schema";
+import {
+	attendance,
+	kvStore,
+	meeting,
+	slackCache,
+	slackUser,
+} from "../../db/schema";
 import type { Env } from "../../index";
 import { TeamSnapClient } from "../../lib/teamsnap/client";
 import { extractData } from "../../lib/teamsnap/types";
@@ -12,19 +18,15 @@ const teamsnap = new Hono<{ Bindings: Env }>();
 teamsnap.get("/sync", requireAdmin(), async (c) => {
 	const db = drizzle(c.env.DB);
 
-	const tokenRow = await db
-		.select({ value: kvStore.value })
+	const configRows = await db
+		.select({ key: kvStore.key, value: kvStore.value })
 		.from(kvStore)
-		.where(eq(kvStore.key, "teamsnap_token"))
-		.get();
-	const token = tokenRow?.value as string;
-
-	const teamIdRow = await db
-		.select({ value: kvStore.value })
-		.from(kvStore)
-		.where(eq(kvStore.key, "teamsnap_team_id"))
-		.get();
-	const teamIdStr = teamIdRow?.value as string;
+		.where(inArray(kvStore.key, ["teamsnap_token", "teamsnap_team_id"]))
+		.all();
+	const token = configRows.find((r) => r.key === "teamsnap_token")
+		?.value as string;
+	const teamIdStr = configRows.find((r) => r.key === "teamsnap_team_id")
+		?.value as string;
 
 	if (!token || !teamIdStr)
 		return c.json(
@@ -39,6 +41,7 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 	const cutoffMs = cutoffTime.getTime();
 
 	const isDryRun = c.req.query("dryRun") === "true";
+	const bustCache = c.req.query("bust") === "true";
 
 	// Parse manual mappings passed from UI
 	const manualMappingsStr = c.req.query("mappings");
@@ -46,41 +49,75 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		? JSON.parse(manualMappingsStr)
 		: {};
 
+	const CACHE_TTL = 10 * 60; // 10 minutes — enough time to review and re-submit
+
+	// biome-ignore lint/suspicious/noExplicitAny: TeamSnap API response shape
+	async function getCachedOrFetch(
+		key: string,
+		fetcher: () => Promise<any>,
+	): Promise<any> {
+		const now = Math.floor(Date.now() / 1000);
+		if (!bustCache) {
+			const cached = await db
+				.select({ value: slackCache.value, expiresAt: slackCache.expiresAt })
+				.from(slackCache)
+				.where(eq(slackCache.key, key))
+				.get();
+			if (cached && cached.expiresAt > now) return JSON.parse(cached.value);
+		}
+
+		const fresh = await fetcher();
+		await db
+			.insert(slackCache)
+			.values({ key, value: JSON.stringify(fresh), expiresAt: now + CACHE_TTL })
+			.onConflictDoUpdate({
+				target: slackCache.key,
+				set: { value: JSON.stringify(fresh), expiresAt: now + CACHE_TTL },
+			})
+			.run();
+		return fresh;
+	}
+
 	try {
-		// Load previously saved mappings
-		const savedMappingsRow = await db
-			.select({ value: kvStore.value })
-			.from(kvStore)
-			.where(eq(kvStore.key, "teamsnap_mappings"))
-			.get();
-		const savedMappingsStr = savedMappingsRow?.value as string;
-		const savedMappings = savedMappingsStr ? JSON.parse(savedMappingsStr) : {};
+		// 1. Parallel I/O: API calls (with caching) + DB reads are all independent
+		const [
+			{ collection },
+			{ collection: availCollection },
+			slackUsers,
+			savedMappingsRow,
+		] = await Promise.all([
+			getCachedOrFetch(`teamsnap_bulk_${teamIdStr}`, () =>
+				client.getBulkLoad(),
+			),
+			getCachedOrFetch(`teamsnap_avail_${teamIdStr}`, () =>
+				client.getAvailabilities(),
+			),
+			db
+				.select({
+					user_id: slackUser.userId,
+					name: slackUser.name,
+					role: slackUser.role,
+				})
+				.from(slackUser)
+				.all(),
+			db
+				.select({ value: kvStore.value })
+				.from(kvStore)
+				.where(eq(kvStore.key, "teamsnap_mappings"))
+				.get(),
+		]);
 
-		// Merge saved mappings with any new ones from the UI
-		const effectiveMappings = { ...savedMappings, ...manualMappings };
-
-		const { collection } = await client.getBulkLoad();
-
-		// 1. Extract Events and Members
 		// biome-ignore lint/suspicious/noExplicitAny: Data is untyped JSON from TS API
 		const events: Record<string, any>[] = [];
 		// biome-ignore lint/suspicious/noExplicitAny: Data is untyped JSON from TS API
 		const members: Record<string, any>[] = [];
-
 		for (const item of collection.items) {
-			const isEvent = item.href.includes("/events/");
-			const isMember = item.href.includes("/members/");
-
-			if (isEvent) {
+			if (item.href.includes("/events/")) {
 				const data = extractData(item);
 				const startDateStr = data.start_date as string;
 				if (!startDateStr) continue;
-
-				const startDate = new Date(startDateStr).getTime();
-				if (startDate > cutoffMs) {
-					events.push(data);
-				}
-			} else if (isMember) {
+				if (new Date(startDateStr).getTime() > cutoffMs) events.push(data);
+			} else if (item.href.includes("/members/")) {
 				members.push(extractData(item));
 			}
 		}
@@ -88,25 +125,20 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		if (events.length === 0)
 			return c.json({ message: "No events in timeframe" });
 
-		// 2. Fetch Availabilities
-		const { collection: availCollection } = await client.getAvailabilities();
 		// biome-ignore lint/suspicious/noExplicitAny: Data is untyped JSON from TS API
 		const availabilities: Record<string, any>[] = [];
 		for (const item of availCollection.items) {
-			if (item.href.includes("/availabilities/")) {
+			if (item.href.includes("/availabilities/"))
 				availabilities.push(extractData(item));
-			}
 		}
 
-		// 3. Match Members to our Slack DB
-		const slackUsers = await db
-			.select({
-				user_id: slackUser.userId,
-				name: slackUser.name,
-				role: slackUser.role,
-			})
-			.from(slackUser)
-			.all();
+		const savedMappingsStr = savedMappingsRow?.value as string;
+		const effectiveMappings = {
+			...(savedMappingsStr ? JSON.parse(savedMappingsStr) : {}),
+			...manualMappings,
+		};
+
+		// 2. Match Members to our Slack DB
 
 		const matchedMembers: {
 			id: number;
@@ -212,64 +244,60 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			});
 		}
 
-		// 4. Upsert Meetings
-		const meetingInserts = [];
-		for (const event of events) {
-			const scheduledAt = Math.floor(
-				new Date(event.start_date).getTime() / 1000,
-			);
-			const name = event.name || "Team Meeting";
-
-			meetingInserts.push({
-				name,
-				scheduledAt,
-				channelId: "teamsnap-import",
-				messageTs: "none",
-			});
-		}
+		// 3. Upsert meetings, get IDs back via RETURNING (avoids a separate SELECT)
+		const meetingInserts = events.map((event) => ({
+			name: (event.name || "Team Meeting") as string,
+			scheduledAt: Math.floor(
+				new Date(event.start_date as string).getTime() / 1000,
+			),
+			channelId: "teamsnap-import",
+			messageTs: "none",
+		}));
 
 		const meetingStmts = meetingInserts.map((row) =>
-			db.insert(meeting).values(row).onConflictDoUpdate({
-				target: [meeting.channelId, meeting.scheduledAt],
-				set: { name: row.name },
-			}),
+			db
+				.insert(meeting)
+				.values(row)
+				.onConflictDoUpdate({
+					target: [meeting.channelId, meeting.scheduledAt],
+					set: { name: row.name },
+				})
+				.returning({
+					id: meeting.id,
+					name: meeting.name,
+					scheduledAt: meeting.scheduledAt,
+				}),
 		);
+		const meetingRows: { id: number; name: string; scheduledAt: number }[] = [];
 		for (let i = 0; i < meetingStmts.length; i += 100) {
-			await db.batch(meetingStmts.slice(i, i + 100) as [typeof meetingStmts[0]]);
+			const results = await db.batch(
+				meetingStmts.slice(i, i + 100) as [(typeof meetingStmts)[0]],
+			);
+			for (const result of results) meetingRows.push(...result);
 		}
-
-		const allMeetingsRes = await db
-			.select({
-				id: meeting.id,
-				name: meeting.name,
-				scheduled_at: meeting.scheduledAt,
-			})
-			.from(meeting)
-			.where(eq(meeting.channelId, "teamsnap-import"))
-			.all();
-
 		const meetingMap = new Map(
-			allMeetingsRes.map((m) => [`${m.name}-${m.scheduled_at}`, m.id]),
+			meetingRows.map((r) => [`${r.name}-${r.scheduledAt}`, r.id]),
 		);
 
+		// 4. Build attendance — O(1) event lookup via Map instead of O(N) find per availability
+		// biome-ignore lint/suspicious/noExplicitAny: Data is untyped JSON from TS API
+		const eventsById = new Map(events.map((e) => [e.id as any, e]));
 		let attendanceInserted = 0;
-		// Use a map to deduplicate availabilities by meetingId + userId
 		// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 		const attendanceInsertsMap = new Map<string, any>();
 		for (const avail of availabilities) {
-			const tsEventId = avail.event_id;
-			const tsMemberId = avail.member_id;
-			const statusCode = avail.status_code;
-
-			// If it's a "has not responded" (null) or "did not attend" we'll skip inserting it unless it's a yes/no/maybe status update.
-			// This addresses the user's request: "if there is a point before which we have never set a positive yes or no then just set it as nothing"
+			const {
+				event_id: tsEventId,
+				member_id: tsMemberId,
+				status_code: statusCode,
+			} = avail;
 			if (statusCode === null) continue;
 
-			const tsEvent = events.find((e) => e.id === tsEventId);
+			const tsEvent = eventsById.get(tsEventId);
 			if (!tsEvent) continue;
 
 			const scheduledAt = Math.floor(
-				new Date(tsEvent.start_date).getTime() / 1000,
+				new Date(tsEvent.start_date as string).getTime() / 1000,
 			);
 			const meetingId = meetingMap.get(
 				`${tsEvent.name || "Team Meeting"}-${scheduledAt}`,
@@ -280,13 +308,10 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 				let status = "maybe";
 				if (statusCode === 1) status = "yes";
 				if (statusCode === 0) status = "no";
-
-				const key = `${meetingId}-${slackUserId}`;
-				// Overwrite with the latest status if there are duplicates from TS API
-				attendanceInsertsMap.set(key, {
+				// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
+				attendanceInsertsMap.set(`${meetingId}-${slackUserId}`, {
 					meetingId,
 					userId: slackUserId,
-					// biome-ignore lint/suspicious/noExplicitAny: need to use any here for now
 					status: status as any,
 				});
 			}
@@ -297,13 +322,18 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 
 		if (attendanceInserts.length > 0) {
 			const attendanceStmts = attendanceInserts.map((att) =>
-				db.insert(attendance).values(att).onConflictDoUpdate({
-					target: [attendance.meetingId, attendance.userId],
-					set: { status: att.status },
-				}),
+				db
+					.insert(attendance)
+					.values(att)
+					.onConflictDoUpdate({
+						target: [attendance.meetingId, attendance.userId],
+						set: { status: att.status },
+					}),
 			);
 			for (let i = 0; i < attendanceStmts.length; i += 100) {
-				await db.batch(attendanceStmts.slice(i, i + 100) as [typeof attendanceStmts[0]]);
+				await db.batch(
+					attendanceStmts.slice(i, i + 100) as [(typeof attendanceStmts)[0]],
+				);
 			}
 		}
 

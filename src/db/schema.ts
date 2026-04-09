@@ -3,6 +3,7 @@ import {
 	primaryKey,
 	sqliteTable,
 	text,
+	unique,
 } from "drizzle-orm/sqlite-core";
 
 export const cdt = sqliteTable("cdt", {
@@ -28,19 +29,25 @@ export const meetingSeries = sqliteTable("meeting_series", {
 	endDate: integer("end_date").notNull(),
 });
 
-export const meeting = sqliteTable("meeting", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	seriesId: integer("series_id").references(() => meetingSeries.id, {
-		onDelete: "set null",
+export const meeting = sqliteTable(
+	"meeting",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		seriesId: integer("series_id").references(() => meetingSeries.id, {
+			onDelete: "set null",
+		}),
+		name: text("name").notNull(),
+		description: text("description").notNull().default(""),
+		scheduledAt: integer("scheduled_at").notNull(),
+		endTime: integer("end_time"),
+		channelId: text("channel_id").notNull(),
+		messageTs: text("message_ts").notNull(),
+		cancelled: integer("cancelled").notNull().default(0),
+	},
+	(table) => ({
+		channelScheduledUniq: unique().on(table.channelId, table.scheduledAt),
 	}),
-	name: text("name").notNull(),
-	description: text("description").notNull().default(""),
-	scheduledAt: integer("scheduled_at").notNull(),
-	endTime: integer("end_time"),
-	channelId: text("channel_id").notNull(),
-	messageTs: text("message_ts").notNull(),
-	cancelled: integer("cancelled").notNull().default(0),
-});
+);
 
 export const slackUser = sqliteTable("slack_user", {
 	userId: text("user_id").primaryKey(),

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { attendance, kvStore, meeting, slackUser } from "../../db/schema";
@@ -228,17 +228,14 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 			});
 		}
 
-		if (meetingInserts.length > 0) {
-			// Chunk inserts to avoid D1 max parameter limit (SQLite limit is 100 bound parameters per query)
-			// Each meeting insert has 4 fields (name, scheduledAt, channelId, messageTs)
-			// Plus an auto-increment ID field internally added = ~5 parameters per row
-			// 100 / 5 = 20 max rows per chunk. We use 10 to be safe.
-			const CHUNK_SIZE = 10;
-			for (let i = 0; i < meetingInserts.length; i += CHUNK_SIZE) {
-				const chunk = meetingInserts.slice(i, i + CHUNK_SIZE);
-				const query = db.insert(meeting).values(chunk).onConflictDoNothing();
-				await query.run();
-			}
+		const meetingStmts = meetingInserts.map((row) =>
+			db.insert(meeting).values(row).onConflictDoUpdate({
+				target: [meeting.channelId, meeting.scheduledAt],
+				set: { name: row.name },
+			}),
+		);
+		for (let i = 0; i < meetingStmts.length; i += 100) {
+			await db.batch(meetingStmts.slice(i, i + 100) as [typeof meetingStmts[0]]);
 		}
 
 		const allMeetingsRes = await db
@@ -299,32 +296,14 @@ teamsnap.get("/sync", requireAdmin(), async (c) => {
 		attendanceInserted = attendanceInserts.length;
 
 		if (attendanceInserts.length > 0) {
-			for (const att of attendanceInserts) {
-				const existingAtt = await db
-					.select()
-					.from(attendance)
-					.where(
-						and(
-							eq(attendance.meetingId, att.meetingId),
-							eq(attendance.userId, att.userId),
-						),
-					)
-					.get();
-
-				if (existingAtt) {
-					await db
-						.update(attendance)
-						.set({ status: att.status })
-						.where(
-							and(
-								eq(attendance.meetingId, att.meetingId),
-								eq(attendance.userId, att.userId),
-							),
-						)
-						.run();
-				} else {
-					await db.insert(attendance).values(att).run();
-				}
+			const attendanceStmts = attendanceInserts.map((att) =>
+				db.insert(attendance).values(att).onConflictDoUpdate({
+					target: [attendance.meetingId, attendance.userId],
+					set: { status: att.status },
+				}),
+			);
+			for (let i = 0; i < attendanceStmts.length; i += 100) {
+				await db.batch(attendanceStmts.slice(i, i + 100) as [typeof attendanceStmts[0]]);
 			}
 		}
 

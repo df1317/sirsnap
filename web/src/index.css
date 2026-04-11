@@ -19,6 +19,7 @@
 		font-feature-settings:
 			"rlig" 1,
 			"calt" 1;
+		font-variant-numeric: tabular-nums;
 		@apply bg-background text-foreground;
 	}
 	html {

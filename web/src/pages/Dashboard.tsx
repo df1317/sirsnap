@@ -83,7 +83,7 @@ function FeaturedMeeting({
 						<span className="font-semibold text-[10px] text-primary uppercase tracking-widest">
 							{month}
 						</span>
-						<span className="font-bold text-4xl text-foreground leading-tight">
+						<span className="font-bold text-4xl text-foreground leading-tight font-mono">
 							{day}
 						</span>
 					</div>
@@ -279,7 +279,7 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 				<span className="font-semibold text-[9px] text-primary uppercase tracking-widest">
 					{month}
 				</span>
-				<span className="font-bold text-foreground text-lg leading-tight">
+				<span className="font-bold text-foreground text-lg leading-tight font-mono">
 					{day}
 				</span>
 			</div>
@@ -524,7 +524,7 @@ export function Dashboard({ session }: { session: Session }) {
 															<span className="font-semibold text-[9px] text-primary uppercase tracking-widest">
 																{month}
 															</span>
-															<span className="font-bold text-foreground text-lg leading-tight">
+															<span className="font-bold text-foreground text-lg leading-tight font-mono">
 																{day}
 															</span>
 														</div>

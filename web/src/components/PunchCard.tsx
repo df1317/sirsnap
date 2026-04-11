@@ -43,36 +43,12 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 		return map;
 	}, [attendanceDates]);
 
-	const getPunchStyle = (count: number) => {
-		if (count < 1)
-			return {
-				backgroundColor: "oklch(0.95 0.02 289.59)",
-				width: "4px",
-				height: "4px",
-			};
-		if (count < 2)
-			return {
-				backgroundColor: "oklch(0.80 0.08 289.59)",
-				width: "6px",
-				height: "6px",
-			};
-		if (count < 4)
-			return {
-				backgroundColor: "oklch(0.70 0.12 289.59)",
-				width: "8px",
-				height: "8px",
-			};
-		if (count < 8)
-			return {
-				backgroundColor: "oklch(0.60 0.16 289.59)",
-				width: "10px",
-				height: "10px",
-			};
-		return {
-			backgroundColor: "oklch(0.50 0.20 289.59)",
-			width: "12px",
-			height: "12px",
-		};
+	const getPunchClasses = (count: number) => {
+		if (count < 1) return "h-1 w-1 bg-violet-200 dark:bg-violet-900/50";
+		if (count < 2) return "h-1.5 w-1.5 bg-violet-300 dark:bg-violet-900/70";
+		if (count < 4) return "h-2 w-2 bg-violet-400 dark:bg-violet-700/70";
+		if (count < 8) return "h-2.5 w-2.5 bg-violet-500 dark:bg-violet-700/90";
+		return "h-3 w-3 bg-violet-600 dark:bg-violet-600";
 	};
 
 	const getDayName = (dayIndex: number) => {
@@ -166,34 +142,19 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 				<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
 					<span>Less</span>
 					<div className="flex size-3 items-center justify-center">
-						<div
-							className="aspect-square rounded-full"
-							style={getPunchStyle(0)}
-						/>
+						<div className={`rounded-full ${getPunchClasses(0)}`} />
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div
-							className="aspect-square rounded-full"
-							style={getPunchStyle(1)}
-						/>
+						<div className={`rounded-full ${getPunchClasses(1)}`} />
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div
-							className="aspect-square rounded-full"
-							style={getPunchStyle(2)}
-						/>
+						<div className={`rounded-full ${getPunchClasses(2)}`} />
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div
-							className="aspect-square rounded-full"
-							style={getPunchStyle(4)}
-						/>
+						<div className={`rounded-full ${getPunchClasses(4)}`} />
 					</div>
 					<div className="flex size-3 items-center justify-center">
-						<div
-							className="aspect-square rounded-full"
-							style={getPunchStyle(8)}
-						/>
+						<div className={`rounded-full ${getPunchClasses(8)}`} />
 					</div>
 					<span>More</span>
 				</div>
@@ -219,8 +180,7 @@ export function PunchCard({ userId }: { userId?: string } = {}) {
 									title={`${count} attendance${count === 1 ? "" : "s"} on ${getDayName(dayOfWeek)}s during week ${weekIndex + 1}`}
 								>
 									<div
-										className="rounded-full transition-all duration-300"
-										style={getPunchStyle(count)}
+										className={`rounded-full transition-all duration-300 ${getPunchClasses(count)}`}
 									/>
 								</div>
 							);

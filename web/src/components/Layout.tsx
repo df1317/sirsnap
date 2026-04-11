@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import type { Session } from "../lib/api";
 import { Footer } from "./Footer";
+import { ThemeToggle } from "./ThemeToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 
@@ -33,7 +34,7 @@ export function Layout({
 
 	return (
 		<div className="flex min-h-screen flex-col bg-background">
-			<header className="sticky top-0 z-50 w-full border-border/60 border-b bg-white/80 backdrop-blur-md">
+			<header className="sticky top-0 z-50 w-full border-border/60 border-b bg-background/80 backdrop-blur-md">
 				<div className="mx-auto flex h-[52px] max-w-5xl items-center justify-between px-5">
 					<div className="flex items-center gap-5">
 						<Link to="/" className="flex shrink-0 items-center gap-2">
@@ -56,6 +57,7 @@ export function Layout({
 					</div>
 
 					<div className="flex items-center gap-2">
+						<ThemeToggle />
 						{session ? (
 							<>
 								<Avatar className="h-6 w-6">

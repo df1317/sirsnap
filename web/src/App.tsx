@@ -146,7 +146,7 @@ export default function App() {
 
 		return (
 			<div className="flex min-h-screen flex-col bg-background">
-				<header className="sticky top-0 z-50 w-full border-border/60 border-b bg-white/80 backdrop-blur-md">
+				<header className="sticky top-0 z-50 w-full border-border/60 border-b bg-background/80 backdrop-blur-md">
 					<div className="mx-auto flex h-[52px] max-w-5xl items-center justify-between px-5">
 						<div className="flex items-center gap-5">
 							<div className="flex shrink-0 items-center gap-2">

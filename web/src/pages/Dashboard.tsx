@@ -517,7 +517,7 @@ export function Dashboard({ session }: { session: Session }) {
 											<div key={m.id}>
 												<Link
 													to="/meetings"
-													className="block transition-colors hover:bg-muted/30"
+													className="block hover:bg-muted/30"
 												>
 													<div className="flex items-center gap-3 px-4 py-3.5">
 														<div className="flex w-10 shrink-0 flex-col items-center justify-start">
@@ -579,7 +579,7 @@ export function Dashboard({ session }: { session: Session }) {
 								<div key={m.id}>
 									<Link
 										to="/meetings"
-										className="block transition-colors hover:bg-muted/30"
+										className="block hover:bg-muted/30"
 									>
 										<MeetingRow meeting={m} />
 									</Link>
